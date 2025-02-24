@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Public Data Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map { height: 600px; width: 100%; }
+    </style>
+</head>
+<body>
+
+    <h1>Public Data Map</h1>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        // Initialize the map
+        var map = L.map('map').setView([47.6687, -122.3826], 13); // Center on Ballard
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Function to load GeoJSON and add it to the map
+        function loadGeoJSON(url, layerGroup, color) {
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    let geoJsonLayer = L.geoJSON(data, {
+                        pointToLayer: function (feature, latlng) {
+                            return L.circleMarker(latlng, {
+                                radius: 6,
+                                fillColor: color,
+                                color: "#000",
+                                weight: 1,
+                                opacity: 1,
+                                fillOpacity: 0.8
+                            });
+                        },
+                        onEachFeature: function (feature, layer) {
+                            let popupContent = `<b>${feature.properties.offense || feature.properties.description || "Unknown Event"}</b><br>
+                                Type: ${feature.properties.call_type || feature.properties.offense_category || "N/A"}<br>
+                                Date: ${feature.properties.queued_time || feature.properties.offense_start || "N/A"}<br>
+                                Location: ${feature.properties.address || "N/A"}`;
+                            layer.bindPopup(popupContent);
+                        }
+                    });
+                    geoJsonLayer.addTo(layerGroup);
+                })
+                .catch(error => console.error("Error loading GeoJSON:", error));
+        }
+
+        // Create layer groups for different datasets
+        let callLayer = L.layerGroup().addTo(map);
+        let crimeLayer = L.layerGroup().addTo(map);
+
+        // Load data from GitHub Pages
+        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/call_data.json", callLayer, "blue");
+        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/crime_data.json", crimeLayer, "red");
+
+        // Add layer controls
+        let baseMaps = {};
+        let overlayMaps = {
+            "911 Calls": callLayer,
+            "Crime Reports": crimeLayer
+        };
+        L.control.layers(baseMaps, overlayMaps, { collapsed: false }).addTo(map);
+
+    </script>
+
+</body>
+</html>
