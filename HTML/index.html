@@ -58,8 +58,8 @@
         let crimeLayer = L.layerGroup().addTo(map);
 
         // Load data from GitHub Pages
-        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/call_data.json", callLayer, "blue");
-        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/crime_data.json", crimeLayer, "red");
+        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/2024Calls.geojson", callLayer, "blue");
+        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data2017-2024CrimeData.geojson", crimeLayer, "red");
 
         // Add layer controls
         let baseMaps = {};
