@@ -25,32 +25,53 @@
         }).addTo(map);
 
         // Function to load GeoJSON data
-        function loadGeoJSON(url, layerGroup, color) {
-            fetch(url)
-                .then(response => response.json())
-                .then(data => {
-                    let geoJsonLayer = L.geoJSON(data, {
-                        pointToLayer: function (feature, latlng) {
-                            return L.circleMarker(latlng, {
-                                radius: 6,
-                                fillColor: color,
-                                color: "#000",
-                                weight: 1,
-                                opacity: 1,
-                                fillOpacity: 0.8
-                            });
-                        },
-                        onEachFeature: function (feature, layer) {
-                            let popupContent = `<b>${feature.properties.offense || feature.properties.description || "Unknown Event"}</b><br>
-                                Type: ${feature.properties.offense_parent_group || feature.properties.call_type || "N/A"}<br>
-                                Date: ${feature.properties.offense_start_datetime || feature.properties.queued_time || "N/A"}<br>
-                                Location: ${feature.properties._100_block_address || feature.properties.address || "N/A"}`;
-                            layer.bindPopup(popupContent);
-                        }
-                    });
-                    geoJsonLayer.addTo(layerGroup);
-                })
-                .catch(error => console.error("Error loading GeoJSON:", error));
+        function loadGeoJSON(url, layerGroup, color, popupFormatter) {
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                let geoJsonLayer = L.geoJSON(data, {
+                    pointToLayer: function (feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            radius: 6,
+                            fillColor: color,
+                            color: "#000",
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        });
+                    },
+                    onEachFeature: popupFormatter // Pass the correct popup function
+                });
+                geoJsonLayer.addTo(layerGroup);
+            })
+            .catch(error => console.error("Error loading GeoJSON:", error));
+         }
+
+        function crimePopup(feature, layer) {
+        let props = feature.properties;
+        let popupContent = `<b>🚔 Crime Report</b><br><hr>
+            <b>Offense:</b> ${props.offense || "N/A"}<br>
+            <b>Category:</b> ${props.offense_parent_group || "N/A"} (${props.crime_against_category || "N/A"})<br>
+            <b>Report Number:</b> ${props.report_number || "N/A"}<br>
+            <b>Occurred:</b> ${props.offense_start_datetime || "N/A"}<br>
+            <b>Reported:</b> ${props.report_datetime || "N/A"}<br>
+            <b>Location:</b> ${props._100_block_address || "N/A"}<br>
+            <b>Precinct/Sector/Beat:</b> ${props.precinct || "N/A"} / ${props.sector || "N/A"} / ${props.beat || "N/A"}`;
+        layer.bindPopup(popupContent);
+        }
+
+        function callPopup(feature, layer) {
+        let props = feature.properties;
+        let popupContent = `<b>📞 911 Call</b><br><hr>
+            <b>Description:</b> ${props.cad_event_clearance_description || "N/A"}<br>
+            <b>Call Type:</b> ${props.call_type || "N/A"}<br>
+            <b>Final Call Type:</b> ${props.final_call_type || "N/A"}<br>
+            <b>Priority:</b> ${props.priority || "N/A"}<br>
+            <b>Queued Time:</b> ${props.cad_event_original_time_queued || "N/A"}<br>
+            <b>Arrival Time:</b> ${props.cad_event_arrived_time || "N/A"}<br>
+            <b>Location:</b> ${props.dispatch_neighborhood || "N/A"}<br>
+            <b>Precinct/Sector/Beat:</b> ${props.dispatch_precinct || "N/A"} / ${props.dispatch_sector || "N/A"} / ${props.dispatch_beat || "N/A"}`;
+        layer.bindPopup(popupContent);
         }
 
         // Create layer groups for different datasets
@@ -64,10 +85,10 @@
         // Add layer controls
         let baseMaps = {};
         let overlayMaps = {
-            "911 Calls": callLayer,
-            "Crime Reports": crimeLayer
+        "911 Calls": callLayer,
+        "Crime Reports": crimeLayer
         };
-        L.control.layers(baseMaps, overlayMaps, { collapsed: false }).addTo(map);
+        L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map);
 
     </script>
 
