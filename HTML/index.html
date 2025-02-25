@@ -24,7 +24,7 @@
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        // Function to load GeoJSON and add it to the map
+        // Function to load GeoJSON data
         function loadGeoJSON(url, layerGroup, color) {
             fetch(url)
                 .then(response => response.json())
@@ -42,9 +42,9 @@
                         },
                         onEachFeature: function (feature, layer) {
                             let popupContent = `<b>${feature.properties.offense || feature.properties.description || "Unknown Event"}</b><br>
-                                Type: ${feature.properties.call_type || feature.properties.offense_category || "N/A"}<br>
-                                Date: ${feature.properties.queued_time || feature.properties.offense_start || "N/A"}<br>
-                                Location: ${feature.properties.address || "N/A"}`;
+                                Type: ${feature.properties.offense_parent_group || feature.properties.call_type || "N/A"}<br>
+                                Date: ${feature.properties.offense_start_datetime || feature.properties.queued_time || "N/A"}<br>
+                                Location: ${feature.properties._100_block_address || feature.properties.address || "N/A"}`;
                             layer.bindPopup(popupContent);
                         }
                     });
@@ -59,7 +59,7 @@
 
         // Load data from GitHub Pages
         loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/2024Calls.geojson", callLayer, "blue");
-        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data2017-2024CrimeData.geojson", crimeLayer, "red");
+        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/2017-2024CrimeData.geojson", crimeLayer, "red");
 
         // Add layer controls
         let baseMaps = {};
