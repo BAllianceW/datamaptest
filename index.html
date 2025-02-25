@@ -5,35 +5,56 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Public Data Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
     <style>
         #map { height: 600px; width: 100%; }
     </style>
 </head>
 <body>
 
+    <input type="date" id="startDate">
+    <input type="date" id="endDate">
+    <button id="filterButton">Filter</button>
+
     <h1>Public Data Map</h1>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
     <script>
         // Initialize the map
-        var map = L.map('map').setView([47.6687, -122.3826], 13); // Center on Ballard
+        var map = L.map('map').setView([47.6687, -122.3826], 13);
 
         // Add OpenStreetMap tiles
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        // Function to load GeoJSON and add it to the map
-        function loadGeoJSON(url, layerGroup, color, popupFormatter) {
-            console.log("Loading:", url); // Debugging
+        // Create feature groups for different datasets
+        let callLayer = L.featureGroup().addTo(map);
+        let crimeLayer = L.featureGroup().addTo(map);
+
+        // Create cluster layers
+        let callClusters = L.markerClusterGroup().addTo(map);
+        let crimeClusters = L.markerClusterGroup().addTo(map);
+
+        // create Heatmap layers
+        let callHeat = L.heatLayer([], { radius: 35, blur: 20 }).addTo(map);
+        let crimeHeat = L.heatLayer([], { radius: 35, blur: 20 }).addTo(map);
+
+        // Load GeoJSON and add to map
+        function loadGeoJSON(url, layerGroup, color, popupFormatter, heatLayer, clusterLayer, dateField) {
+            console.log("Loading:", url);
             fetch(url)
                 .then(response => response.json())
                 .then(data => {
-                    console.log("Loaded:", url, data); // Debugging
+                    console.log("Loaded:", url, data);
                     let geoJsonLayer = L.geoJSON(data, {
                         pointToLayer: function (feature, latlng) {
-                            return L.circleMarker(latlng, {
+                            let marker = L.circleMarker(latlng, {
                                 radius: 6,
                                 fillColor: color,
                                 color: "#000",
@@ -41,15 +62,26 @@
                                 opacity: 1,
                                 fillOpacity: 0.8
                             });
+                            // Attach popup to the marker before adding to cluster
+                            popupFormatter(feature, marker);
+                            marker.featureProperties = feature.properties;
+                            clusterLayer.addLayer(marker);
+                            return marker;
                         },
-                        onEachFeature: popupFormatter // Attach popups
+                        onEachFeature: function () {} // Empty onEachFeature to prevent duplicate popups
                     });
-                    geoJsonLayer.addTo(layerGroup);
+                    layerGroup.addLayer(geoJsonLayer);
+
+                    let heatPoints = data.features.filter(feature => feature.geometry && feature.geometry.coordinates).map(feature => {
+                        let coords = feature.geometry.coordinates;
+                        return [coords[1], coords[0]];
+                    });
+                    heatLayer.setLatLngs(heatPoints);
                 })
                 .catch(error => console.error("Error loading GeoJSON:", error));
         }
 
-        // Popup function for Crime Data (Corrected Fields)
+        // Popup functions
         function crimePopup(feature, layer) {
             let props = feature.properties;
             let popupContent = `<b>🚔 Crime Report</b><br><hr>
@@ -62,40 +94,89 @@
                 <b>Precinct/Sector/Beat:</b> ${props.precinct || "N/A"} / ${props.sector || "N/A"} / ${props.beat || "N/A"}`;
             layer.bindPopup(popupContent);
         }
-
-        // Popup function for 911 Call Data (Corrected Fields)
         function callPopup(feature, layer) {
-        let props = feature.properties;
-        console.log("Call feature properties:", props);
-
-        let popupContent = `<b>📞 911 Call</b><br><hr>
-            <b>Description:</b> ${props.cad_even_1 || "N/A"}<br>
-            <b>Call Type:</b> ${props.call_type || "N/A"}<br>
-            <b>Final Call Type:</b> ${props.final_call || "N/A"}<br>
-            <b>Priority:</b> ${props.priority || "N/A"}<br>
-            <b>Queued Time:</b> ${props.cad_even_2 || "N/A"}<br>
-            <b>Arrival Time:</b> ${props.cad_even_3 || "N/A"}<br>
-            <b>Location:</b> ${props.dispatch_n || "N/A"}<br>
-            <b>Precinct/Sector/Beat:</b> ${props.dispatch_p || "N/A"} / ${props.dispatch_s || "N/A"} / ${props.dispatch_b || "N/A"}`;
-        layer.bindPopup(popupContent);
+            let props = feature.properties;
+            let popupContent = `<b>📞 911 Call</b><br><hr>
+                <b>Description:</b> ${props.cad_even_1 || "N/A"}<br>
+                <b>Call Type:</b> ${props.call_type || "N/A"}<br>
+                <b>Final Call Type:</b> ${props.final_call || "N/A"}<br>
+                <b>Priority:</b> ${props.priority || "N/A"}<br>
+                <b>Queued Time:</b> ${props.cad_even_2 || "N/A"}<br>
+                <b>Arrival Time:</b> ${props.cad_even_3 || "N/A"}<br>
+                <b>Location:</b> ${props.dispatch_n || "N/A"}<br>
+                <b>Precinct/Sector/Beat:</b> ${props.dispatch_p || "N/A"} / ${props.dispatch_s || "N/A"} / ${props.dispatch_b || "N/A"}`;
+            layer.bindPopup(popupContent);
         }
 
-        // Create feature groups for different datasets
-        let callLayer = L.featureGroup().addTo(map);
-        let crimeLayer = L.featureGroup().addTo(map);
-
-        // Load GeoJSON Data (Corrected URLs)
-        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/2024Calls.geojson", callLayer, "blue", callPopup);
-        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/2017to2024CrimeData.geojson", crimeLayer, "red", crimePopup);
+        // Load GeoJSON data (with date field for filtering)
+        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/2024Calls.geojson", callLayer, "blue", callPopup, callHeat, callClusters, "ogQued");
+        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/2017to2024CrimeData.geojson", crimeLayer, "red", crimePopup, crimeHeat, crimeClusters, "offense_start_datetime");
 
         // Add Layer Controls
         let overlayMaps = {
-            "911 Calls": callLayer,
-            "Crime Reports": crimeLayer
+            "911 Calls Points": callLayer, // Add original point layers
+            "Crime Reports Points": crimeLayer,
+            "911 Calls Clusters": callClusters, // Add cluster layers
+            "Crime Reports Clusters": crimeClusters,
+            "911 Calls Heatmap": callHeat,
+            "Crime Reports Heatmap": crimeHeat
         };
         L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map);
 
-    </script>
+        // Time filtering
+        document.getElementById("filterButton").addEventListener("click", function () {
+            let startDate = document.getElementById("startDate").value;
+            let endDate = document.getElementById("endDate").value;
+            filterData(startDate, endDate);
+        });
 
+        function filterData(startDate, endDate) {
+            if (!startDate || !endDate) return; // Prevent filtering with empty dates
+            startDate = new Date(startDate);
+            endDate = new Date(endDate);
+
+            // Filter clusters
+            callClusters.eachLayer(marker => {
+                let featureDate = new Date(marker.featureProperties.ogQued);
+                if (featureDate < startDate || featureDate > endDate) {
+                    callClusters.removeLayer(marker);
+                }
+            });
+            crimeClusters.eachLayer(marker => {
+                let featureDate = new Date(marker.featureProperties.offense_start_datetime);
+                if (featureDate < startDate || featureDate > endDate) {
+                    crimeClusters.removeLayer(marker);
+                }
+            });
+
+            // Update heatmaps (recalculate points)
+            updateHeatmaps(startDate, endDate);
+        }
+
+        function updateHeatmaps(startDate, endDate) {
+            let callHeatPoints = [];
+            let crimeHeatPoints = [];
+
+            callClusters.eachLayer(marker => {
+                let featureDate = new Date(marker.featureProperties.ogQued);
+                if (featureDate >= startDate && featureDate <= endDate) {
+                    callHeatPoints.push([marker.getLatLng().lat, marker.getLatLng().lng]);
+                }
+            });
+            crimeClusters.eachLayer(marker => {
+                let featureDate = new Date(marker.featureProperties.offense_start_datetime);
+                if (featureDate >= startDate && featureDate <= endDate) {
+                    crimeHeatPoints.push([marker.getLatLng().lat, marker.getLatLng().lng]);
+                }
+            });
+
+            if (callHeat._map) { //Check if heatmap is added to map.
+                callHeat.setLatLngs(callHeatPoints);
+            }
+            if (crimeHeat._map){
+                crimeHeat.setLatLngs(crimeHeatPoints);
+            }
+        }
+    </script>
 </body>
 </html>
