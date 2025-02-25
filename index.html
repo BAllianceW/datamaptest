@@ -65,17 +65,19 @@
 
         // Popup function for 911 Call Data (Corrected Fields)
         function callPopup(feature, layer) {
-            let props = feature.properties;
-            let popupContent = `<b>📞 911 Call</b><br><hr>
-                <b>Description:</b> ${props.cad_event_clearance_description || "N/A"}<br>
-                <b>Call Type:</b> ${props.call_type || "N/A"}<br>
-                <b>Final Call Type:</b> ${props.final_call_type || "N/A"}<br>
-                <b>Priority:</b> ${props.priority || "N/A"}<br>
-                <b>Queued Time:</b> ${props.cad_event_original_time_queued || "N/A"}<br>
-                <b>Arrival Time:</b> ${props.cad_event_arrived_time || "N/A"}<br>
-                <b>Location:</b> ${props.dispatch_neighborhood || "N/A"}<br>
-                <b>Precinct/Sector/Beat:</b> ${props.dispatch_precinct || "N/A"} / ${props.dispatch_sector || "N/A"} / ${props.dispatch_beat || "N/A"}`;
-            layer.bindPopup(popupContent);
+        let props = feature.properties;
+        console.log("Call feature properties:", props);
+
+        let popupContent = `<b>📞 911 Call</b><br><hr>
+            <b>Description:</b> ${props.cad_even_1 || "N/A"}<br>
+            <b>Call Type:</b> ${props.call_type || "N/A"}<br>
+            <b>Final Call Type:</b> ${props.final_call || "N/A"}<br>
+            <b>Priority:</b> ${props.priority || "N/A"}<br>
+            <b>Queued Time:</b> ${props.cad_even_2 || "N/A"}<br>
+            <b>Arrival Time:</b> ${props.cad_even_3 || "N/A"}<br>
+            <b>Location:</b> ${props.dispatch_n || "N/A"}<br>
+            <b>Precinct/Sector/Beat:</b> ${props.dispatch_p || "N/A"} / ${props.dispatch_s || "N/A"} / ${props.dispatch_b || "N/A"}`;
+        layer.bindPopup(popupContent);
         }
 
         // Create feature groups for different datasets
