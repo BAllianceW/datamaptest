@@ -24,11 +24,13 @@
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        // Function to load GeoJSON data with correct popups
+        // Function to load GeoJSON and add it to the map
         function loadGeoJSON(url, layerGroup, color, popupFormatter) {
+            console.log("Loading:", url); // Debugging
             fetch(url)
                 .then(response => response.json())
                 .then(data => {
+                    console.log("Loaded:", url, data); // Debugging
                     let geoJsonLayer = L.geoJSON(data, {
                         pointToLayer: function (feature, latlng) {
                             return L.circleMarker(latlng, {
@@ -42,12 +44,12 @@
                         },
                         onEachFeature: popupFormatter // Attach popups
                     });
-                    layerGroup.addLayer(geoJsonLayer); // Ensure it's added properly
+                    geoJsonLayer.addTo(layerGroup);
                 })
                 .catch(error => console.error("Error loading GeoJSON:", error));
         }
 
-        // Popup function for Crime Data
+        // Popup function for Crime Data (Corrected Fields)
         function crimePopup(feature, layer) {
             let props = feature.properties;
             let popupContent = `<b>🚔 Crime Report</b><br><hr>
@@ -61,7 +63,7 @@
             layer.bindPopup(popupContent);
         }
 
-        // Popup function for Call Data
+        // Popup function for 911 Call Data (Corrected Fields)
         function callPopup(feature, layer) {
             let props = feature.properties;
             let popupContent = `<b>📞 911 Call</b><br><hr>
@@ -76,13 +78,13 @@
             layer.bindPopup(popupContent);
         }
 
-        // Use L.featureGroup() instead of L.layerGroup() to support interactivity
+        // Create feature groups for different datasets
         let callLayer = L.featureGroup().addTo(map);
         let crimeLayer = L.featureGroup().addTo(map);
 
-        // Load GeoJSON Data with Popup Functions
+        // Load GeoJSON Data (Corrected URLs)
         loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/2024Calls.geojson", callLayer, "blue", callPopup);
-        loadGeoJSON("https://raw.githubusercontent.com/BAllianceW/datamaptest/main/Data/2017to2024CrimeData.geojson", crimeLayer, "red", crimePopup);
+        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/2017to2024CrimeData.geojson", crimeLayer, "red", crimePopup);
 
         // Add Layer Controls
         let overlayMaps = {
