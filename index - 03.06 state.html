@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Public Data Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+    <link rel="stylesheet" href="normalize.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/selectize.js/0.13.3/js/standalone/selectize.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/selectize.js/0.13.3/css/selectize.default.min.css" />
+    <style>
+        #map-container {
+            display: flex;
+            width: 100%;
+            height: 800px; /* Set a fixed height or adjust as needed */
+            transform: translateZ(0);
+        }
+        #map {
+            flex: 3; /* Adjust as needed for map width */
+            height: 100%;
+            transform: translateZ(0);
+        }
+        #sidebar {
+            flex: 1; /* Adjust as needed for sidebar width */
+            height: 100%;
+            overflow-y: auto;
+            border-left: 2px solid #000000;
+            border-right: 2px solid #000000;
+            border-top: 2px solid #000000; border-top-right-radius: 10%;
+            border-bottom: 2px solid #000000; border-bottom-right-radius: 10%;
+            background-color: #f8f9fa;
+        }
+        #sidebar h3 {
+            text-align: center; /* Center the text */
+        }
+        .sidebar-el {
+            padding: 8px;
+            margin: 5px 0;
+            background: #fff;
+            border: 1px solid #ddd;
+            cursor: pointer;
+        }
+        .sidebar-el:hover {
+            background: #e9ecef;
+        }
+        .clear-filter-btn {
+            margin-left: 8px;
+            padding: 2px 8px;
+            font-size: 12px;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            color: #666;
+        }
+        .clear-filter-btn:hover {
+            background-color: #e9ecef;
+            color: #333;
+        }
+        .filter-section div {
+            margin-bottom: 10px;
+        }
+        .filter-section label {
+            display: inline-block;
+            min-width: 60px;
+        }
+        #charts-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .chart-wrapper {
+            flex: 1;
+            min-width: 400px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .chart-title {
+            text-align: center;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .additional-filters {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        .additional-filters select {
+            flex: 1;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .query-builder {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .query-type-selector {
+            margin-bottom: 15px;
+        }
+        .query-conditions {
+            margin-bottom: 15px;
+        }
+        .query-condition {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        .query-condition select,
+        .query-condition input {
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .query-condition .field-select {
+            flex: 2;
+        }
+        .query-condition .operator-select {
+            flex: 1;
+        }
+        .query-condition .value-input {
+            flex: 2;
+        }
+        .add-condition-btn,
+        .remove-condition-btn {
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+        }
+        .query-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .add-group-btn,
+        .clear-query-btn,
+        .apply-query-btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .add-group-btn {
+            background: #e9ecef;
+            color: #495057;
+        }
+        .clear-query-btn {
+            background: #dc3545;
+            color: white;
+        }
+        .apply-query-btn {
+            background: #28a745;
+            color: white;
+        }
+        .query-preview {
+            background: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .query-preview pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+
+    <label for="yearSelect">Select Year:</label>
+    <select id="yearSelect">
+        </select>
+
+    <div id="sliderContainer">
+        <label for="startDateInput">Start Date:</label>
+        <input type="range" id="startDateInput" min="0" max="100" value="0">
+        <span id="startDateLabel"></span>
+
+        <label for="endDateInput">End Date:</label>
+        <input type="range" id="endDateInput" min="0" max="100" value="100">
+        <span id="endDateLabel"></span>
+        <button id="fitDataButton">Show All Points</button>
+    </div>
+
+    <div class="filter-section">
+        <h3>Query Builder</h3>
+        <div class="query-builder">
+            <div class="query-type-selector">
+                <label>Query Type:</label>
+                <select id="queryTypeSelect">
+                    <option value="calls">911 Calls</option>
+                    <option value="crimes">Crime Reports</option>
+                </select>
+            </div>
+            <div id="queryConditions" class="query-conditions">
+                <!-- Initial conditions will be added by JavaScript -->
+            </div>
+            <div class="query-actions">
+                <button id="addGroupBtn" class="add-group-btn">Add Group</button>
+                <button id="clearQueryBtn" class="clear-query-btn">Clear Query</button>
+                <button id="applyQueryBtn" class="apply-query-btn">Apply Query</button>
+            </div>
+            <div class="query-preview">
+                <h4>Query Preview</h4>
+                <pre id="queryPreview"></pre>
+            </div>
+        </div>
+    </div>
+
+    <h1>Public Data Map</h1>
+    <div id="map-container">
+        <div id="map"></div>
+        <div id="sidebar"><h3>Visible Data Points</h3></div>
+    </div>
+    <div id="charts-container">
+        <div class="chart-wrapper">
+            <div class="chart-title">Calls by Hour</div>
+            <canvas id="callsByHourChart"></canvas>
+        </div>
+        <div class="chart-wrapper">
+            <div class="chart-title">Crimes by Hour</div>
+            <canvas id="crimesByHourChart"></canvas>
+        </div>
+        <div class="chart-wrapper">
+            <div class="chart-title">Calls by Day of Week</div>
+            <canvas id="callsByDayChart"></canvas>
+        </div>
+        <div class="chart-wrapper">
+            <div class="chart-title">Crimes by Day of Week</div>
+            <canvas id="crimesByDayChart"></canvas>
+        </div>
+        <div class="chart-wrapper">
+            <div class="chart-title">Average Response Time by Priority</div>
+            <canvas id="responseTimeChart"></canvas>
+        </div>
+    </div>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const callDataHeaderMapping = {
+            "cad_event_": "cad_event_number",
+            "cad_even_1": "event_clearance_description",
+            "cad_even_2": "original_time_queued",
+            "cad_even_3": "at_scene_time",
+            "dispatch_p": "dispatch_precinct",
+            "dispatch_s": "dispatch_sector",
+            "dispatch_b": "dispatch_beat",
+            "dispatch_l": "longitude",
+            "dispatch_1": "latitude",
+            "dispatch_r": "address",
+            "cad_even_4": "source",
+            "call_sign_": "call_sign",
+            "call_sig_1": "last_updated_time",
+            "first_spd_": "first_unit_on_scene_time",
+            "first_sp_1": "first_unit_dispatched_time",
+            "last_spd_c": "last_unit_cleared_time",
+            "spd_call_s": "call_duration_seconds",
+            "call_sig_2": "time_first_unit_arrived",
+            "first_sp_2": "time_between_dispatch_and_arrival",
+            "first_sp_3": "time_between_queue_and_dispatch",
+            "call_sig_3": "time_between_queue_and_arrival",
+            "call_sig_4": "time_between_queue_and_first_unit_dispatched",
+            "call_sig_5": "time_between_queue_and_first_unit_arrived",
+            "cad_even_5": "on_scene_response_time",
+            "call_sig_6": "time_between_first_unit_arrived_and_last_unit_cleared",
+            "call_type_": "call_priority_description",
+            "dispatch_n": "dispatch_neighborhood",
+            "call_typ_1": "call_origin_description",
+            "ogQued": "og_queued_custom",
+            "call_type": "call_type",
+            "priority": "priority",
+            "initial_ca": "initial_type_description",
+            "final_call": "final_call_type_description"
+        };
+
+        // Initialize the map
+        var map = L.map('map').setView([47.6687, -122.3826], 14);
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let allCallsData;
+        let allCrimeData;
+        let callCategoryValues = {}; // Cache for call category values
+        let crimeCategoryValues = {}; // Cache for crime category values
+
+        // Create feature groups for different datasets
+        let callLayer = L.featureGroup();
+        let crimeLayer = L.featureGroup();
+
+        // Create cluster layers
+        let callClusters = L.markerClusterGroup().addTo(map);
+        let crimeClusters = L.markerClusterGroup();
+
+        // create Heatmap layers
+        let callHeat = L.heatLayer([], { radius: 35, blur: 50 });
+        let crimeHeat = L.heatLayer([], { radius: 35, blur: 50 });
+
+        function createSidebarElement(layer) {
+            const props = layer.featureProperties;
+            const el = document.createElement("div");
+            el.classList.add("sidebar-el");
+            el.setAttribute("data-marker", layer._leaflet_id);
+
+            if (props.offense) { // Crime Data
+                el.innerHTML = `
+                    <b>🚔 Crime Report</b><br>
+                    <b>Offense:</b> ${props.offense || "N/A"}<br>
+                    <b>Category:</b> [${props.crime_against_category || "N/A"}]: ${props.offense_parent_group || "N/A"}<br>
+                    <b>Reported:</b> ${formatDate(props.report_datetime) || "N/A"}<br>
+                    <b>Location:</b> ${props._100_block_address || "N/A"}<br>
+                    <b>Precinct:</b> ${props.precinct || "N/A"}
+                `;
+            } else { // Call Data
+                // Use mapped headers to access properties
+                const description = props[callDataHeaderMapping["cad_even_1"]] || props[callDataHeaderMapping["cad_even_2"]] || "Unknown";
+                const responseTimeSeconds = props[callDataHeaderMapping["cad_even_5"]];
+                let responseTimeString = "N/A";
+                if (!isNaN(responseTimeSeconds) && responseTimeSeconds >= 0) {
+                    responseTimeString = formatTimeDifference(responseTimeSeconds);
+                }
+                el.innerHTML = `
+                    <b>📞 911 Call</b>  -  Priority ${props.priority}<br>
+                    <b>Description:</b> ${description}<br>
+                    <b>Called in on:</b> ${formatDate(props[callDataHeaderMapping["cad_even_2"]])}<br>
+                    <b>Time until units on-scene:</b> ${responseTimeString} (${props.call_type})
+                `;
+            }
+
+            el.addEventListener("click", function () {
+                let zoomLevel = map.getZoom();
+                if (layer.__parent) {
+                    zoomLevel = Math.max(zoomLevel, layer.__parent._zoom);
+                }
+                map.setView(layer.getLatLng(), zoomLevel);
+                if (props.offense) {
+                    crimePopup(layer.feature, layer);
+                } else {
+                    callPopup(layer.feature, layer);
+                }
+                layer.openPopup();
+            });
+
+            document.getElementById("sidebar").appendChild(el);
+        }
+
+        // Listen for animations on cluster marker layers
+        callClusters.on('animationend', function () {
+            setTimeout(listMarkers, 10);
+        });
+
+        crimeClusters.on('animationend', function () {
+            setTimeout(listMarkers, 10);
+        });
+
+        let selectizeInitializedCount = 0;
+        let callCategoryFieldSelectize;
+        let crimeCategoryFieldSelectize;
+        let callCategoryValueSelectize;
+        let crimeCategoryValueSelectize;
+        let callPrioritySelectize;
+        let callTypeSelectize;
+
+        // Initialize query builder
+        function initializeQueryBuilder() {
+            const queryTypeSelect = document.getElementById('queryTypeSelect');
+            const queryConditions = document.getElementById('queryConditions');
+            const addGroupBtn = document.getElementById('addGroupBtn');
+            const clearQueryBtn = document.getElementById('clearQueryBtn');
+            const applyQueryBtn = document.getElementById('applyQueryBtn');
+
+            // Function to update query preview
+            function updateQueryPreview() {
+                const queryPreview = document.getElementById('queryPreview');
+                const queryType = queryTypeSelect.value;
+                const conditions = Array.from(document.querySelectorAll('.query-condition'))
+                    .map(condition => {
+                        const field = condition.querySelector('.field-select').value;
+                        const operator = condition.querySelector('.operator-select').value;
+                        const valueSelect = condition.querySelector('.value-select');
+                        const valueInput = condition.querySelector('.value-input');
+                        const value = valueSelect.style.display !== 'none' ? valueSelect.value : valueInput.value;
+                        
+                        if (!field || !value) return null;
+                        
+                        // Format the condition for display
+                        const displayValue = value.includes(' ') ? `"${value}"` : value;
+                        return `${field} ${operator} ${displayValue}`;
+                    })
+                    .filter(condition => condition !== null);
+
+                if (conditions.length === 0) {
+                    queryPreview.textContent = 'No filters applied';
+                    return;
+                }
+
+                // Create the display query
+                const displayQuery = conditions.join(' AND ');
+                
+                // Create the SoQL query
+                const soqlConditions = conditions.map(condition => {
+                    // Convert operators to SoQL format
+                    return condition.replace('contains', 'LIKE')
+                                 .replace('startsWith', 'LIKE')
+                                 .replace('endsWith', 'LIKE');
+                });
+                const soqlQuery = `$where=${encodeURIComponent(soqlConditions.join(' AND '))}`;
+
+                // Get the appropriate dataset ID
+                const datasetId = queryType === 'calls' ? '3k2p-39jp' : 'tazs-3rd5';
+                
+                // Create the full API URL
+                const apiUrl = `https://data.seattle.gov/resource/${datasetId}.json?${soqlQuery}`;
+
+                // Update the preview
+                queryPreview.innerHTML = `Current Query:\n${displayQuery}\n\nSoQL Query:\n${soqlQuery}\n\nAPI URL:\n${apiUrl}`;
+            }
+
+            // Add new group (same as addCondition for now)
+            function addGroup() {
+                addCondition();
+            }
+
+            // Add new condition
+            function addCondition() {
+                const condition = document.createElement('div');
+                condition.className = 'query-condition';
+                condition.innerHTML = `
+                    <select class="field-select">
+                        <option value="">Select Field</option>
+                    </select>
+                    <select class="operator-select">
+                        <option value="=">=</option>
+                        <option value="!=">≠</option>
+                        <option value=">">&gt;</option>
+                        <option value="<">&lt;</option>
+                        <option value=">=">≥</option>
+                        <option value="<=">≤</option>
+                        <option value="contains">Contains</option>
+                        <option value="startsWith">Starts With</option>
+                        <option value="endsWith">Ends With</option>
+                    </select>
+                    <div class="value-container">
+                        <select class="value-select" style="display: none;">
+                            <option value="">Select Value</option>
+                        </select>
+                        <input type="text" class="value-input" placeholder="Value">
+                    </div>
+                    <button class="add-condition-btn">+</button>
+                    <button class="remove-condition-btn">-</button>
+                `;
+                queryConditions.appendChild(condition);
+
+                // Add event listeners
+                const addBtn = condition.querySelector('.add-condition-btn');
+                const removeBtn = condition.querySelector('.remove-condition-btn');
+                const fieldSelect = condition.querySelector('.field-select');
+                const valueSelect = condition.querySelector('.value-select');
+                const valueInput = condition.querySelector('.value-input');
+                const operatorSelect = condition.querySelector('.operator-select');
+
+                addBtn.addEventListener('click', () => addCondition());
+                removeBtn.addEventListener('click', () => removeCondition(condition));
+                
+                // Handle field selection change
+                fieldSelect.addEventListener('change', () => {
+                    const selectedField = fieldSelect.value;
+                    const queryType = document.getElementById('queryTypeSelect').value;
+                    console.log('Field selected:', selectedField);
+                    console.log('Query type:', queryType);
+                    
+                    const values = queryType === 'calls' ? callCategoryValues[selectedField] : crimeCategoryValues[selectedField];
+                    console.log('Available values:', values);
+                    
+                    if (values && values.length > 0) {
+                        valueSelect.style.display = 'block';
+                        valueInput.style.display = 'none';
+                        valueSelect.innerHTML = '<option value="">Select Value</option>';
+                        values.forEach(value => {
+                            valueSelect.add(new Option(value, value));
+                        });
+                        valueInput.value = '';
+                    } else {
+                        valueSelect.style.display = 'none';
+                        valueInput.style.display = 'block';
+                        valueSelect.value = '';
+                    }
+                    updateQueryPreview();
+                });
+
+                // Add change listeners for all inputs
+                fieldSelect.addEventListener('change', () => {
+                    updateQueryPreview();
+                    populateFieldOptions();
+                });
+                operatorSelect.addEventListener('change', updateQueryPreview);
+                valueSelect.addEventListener('change', updateQueryPreview);
+                valueInput.addEventListener('input', updateQueryPreview);
+
+                return condition;
+            }
+
+            // Apply query
+            function applyQuery() {
+                const queryType = queryTypeSelect.value;
+                const conditions = Array.from(document.querySelectorAll('.query-condition')).map(condition => {
+                    const field = condition.querySelector('.field-select').value;
+                    const operator = condition.querySelector('.operator-select').value;
+                    const valueSelect = condition.querySelector('.value-select');
+                    const valueInput = condition.querySelector('.value-input');
+                    const value = valueSelect.style.display !== 'none' ? valueSelect.value : valueInput.value;
+                    return { field, operator, value };
+                }).filter(condition => condition.field && condition.value);
+
+                // Update cached filtered data
+                if (queryType === 'calls') {
+                    cachedFilteredCalls = allCallsData.features.filter(feature => {
+                        return conditions.every(condition => {
+                            const fieldValue = feature.properties[condition.field];
+                            if (fieldValue === undefined) return false;
+                            return evaluateCondition(fieldValue, condition);
+                        });
+                    });
+                } else {
+                    cachedFilteredCrimes = allCrimeData.features.filter(feature => {
+                        return conditions.every(condition => {
+                            const fieldValue = feature.properties[condition.field];
+                            if (fieldValue === undefined) return false;
+                            return evaluateCondition(fieldValue, condition);
+                        });
+                    });
+                }
+
+                // Update the map and charts
+                const startDate = new Date(parseInt(document.getElementById("startDateInput").value));
+                const endDate = new Date(parseInt(document.getElementById("endDateInput").value));
+                
+                // Clear existing layers
+                callClusters.clearLayers();
+                crimeClusters.clearLayers();
+                callLayer.clearLayers();
+                crimeLayer.clearLayers();
+
+                // Process filtered data
+                if (queryType === 'calls') {
+                    cachedFilteredCalls.forEach(feature => {
+                        processFeature(feature, "blue", callPopup);
+                    });
+                } else {
+                    cachedFilteredCrimes.forEach(feature => {
+                        processFeature(feature, "red", crimePopup);
+                    });
+                }
+
+                // Update heatmaps
+                updateHeatmaps(startDate, endDate);
+                
+                // Update charts with filtered data
+                updateCharts();
+                
+                // Update query preview
+                updateQueryPreview();
+            }
+
+            function evaluateCondition(fieldValue, condition) {
+                switch (condition.operator) {
+                    case '=': return String(fieldValue) === String(condition.value);
+                    case '!=': return String(fieldValue) !== String(condition.value);
+                    case '>': return Number(fieldValue) > Number(condition.value);
+                    case '<': return Number(fieldValue) < Number(condition.value);
+                    case '>=': return Number(fieldValue) >= Number(condition.value);
+                    case '<=': return Number(fieldValue) <= Number(condition.value);
+                    case 'contains': return String(fieldValue).toLowerCase().includes(String(condition.value).toLowerCase());
+                    case 'startsWith': return String(fieldValue).toLowerCase().startsWith(String(condition.value).toLowerCase());
+                    case 'endsWith': return String(fieldValue).toLowerCase().endsWith(String(condition.value).toLowerCase());
+                    default: return true;
+                }
+            }
+
+            // Event listeners
+            queryTypeSelect.addEventListener('change', () => {
+                populateFieldOptions();
+                updateQueryPreview();
+            });
+
+            addGroupBtn.addEventListener('click', addGroup);
+            
+            clearQueryBtn.addEventListener('click', () => {
+                queryConditions.innerHTML = '';
+                addCondition();
+                updateQueryPreview();
+                
+                // Reset cached filtered data
+                cachedFilteredCalls = allCallsData.features;
+                cachedFilteredCrimes = allCrimeData.features;
+                
+                // Update the map and charts
+                const startDate = new Date(parseInt(document.getElementById("startDateInput").value));
+                const endDate = new Date(parseInt(document.getElementById("endDateInput").value));
+                filterData(startDate, endDate);
+            });
+            
+            applyQueryBtn.addEventListener('click', applyQuery);
+
+            // Initialize with one condition and populate fields
+            addCondition();
+            populateFieldOptions();
+            updateQueryPreview();
+        }
+
+        // Call initializeQueryBuilder after the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeQueryBuilder();
+        });
+
+        // Update slider range and labels
+        function updateSliders(minDate, maxDate) {
+            const startDateInput = document.getElementById("startDateInput");
+            const endDateInput = document.getElementById("endDateInput");
+            const startDateLabel = document.getElementById("startDateLabel");
+            const endDateLabel = document.getElementById("endDateLabel");
+
+            if (!minDate || !maxDate) {
+                console.error("Invalid date range:", { minDate, maxDate });
+                return;
+            }
+
+            // Update min/max values
+            startDateInput.min = minDate;
+            startDateInput.max = maxDate;
+            endDateInput.min = minDate;
+            endDateInput.max = maxDate;
+
+            // Set initial values to full range
+            startDateInput.value = minDate;
+            endDateInput.value = maxDate;
+
+            // Update labels
+            updateDateLabels();
+        }
+
+        function updateDateLabels() {
+            const startDateInput = document.getElementById("startDateInput");
+            const endDateInput = document.getElementById("endDateInput");
+            const startDateLabel = document.getElementById("startDateLabel");
+            const endDateLabel = document.getElementById("endDateLabel");
+
+            startDateLabel.textContent = new Date(parseInt(startDateInput.value)).toLocaleDateString();
+            endDateLabel.textContent = new Date(parseInt(endDateInput.value)).toLocaleDateString();
+        }
+
+        // Load GeoJSON and add to map
+        function loadGeoJSON(url, layerGroup, color, popupFormatter, heatLayer, clusterLayer, dateField, callback) {
+            console.log("Loading:", url);
+            
+            // Check if we already have the data
+            if ((url.includes("2024Calls") && allCallsData) || 
+                (url.includes("2017to2024CrimeData") && allCrimeData)) {
+                console.log("Using cached data for:", url);
+                if (callback) callback();
+                return;
+            }
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Loaded:", url, data);
+
+                    // Apply callDataHeaderMapping to the data here
+                    if (url.includes("2024Calls")) {
+                        data.features.forEach(feature => {
+                            let mappedProperties = {};
+                            for (let key in feature.properties) {
+                                if (callDataHeaderMapping[key]) {
+                                    mappedProperties[callDataHeaderMapping[key]] = feature.properties[key];
+                                } else {
+                                    mappedProperties[key] = feature.properties[key];
+                                }
+                            }
+                            feature.properties = mappedProperties;
+                        });
+                        allCallsData = data;
+                        filteredCallsData = data.features; // Initialize filtered data
+                        
+                        // Cache category values for calls
+                        callCategoryFields.forEach(field => {
+                            const values = new Set();
+                            data.features.forEach(feature => {
+                                if (feature.properties[field.field]) {
+                                    values.add(feature.properties[field.field]);
+                                }
+                            });
+                            callCategoryValues[field.field] = Array.from(values).sort();
+                            console.log(`Cached values for ${field.field}:`, callCategoryValues[field.field]);
+                        });
+                    } else if (url.includes("2017to2024CrimeData")) {
+                        allCrimeData = data;
+                        filteredCrimeData = data.features; // Initialize filtered data
+                        
+                        // Cache category values for crimes
+                        crimeCategoryFields.forEach(field => {
+                            const values = new Set();
+                            data.features.forEach(feature => {
+                                if (feature.properties[field.field]) {
+                                    values.add(feature.properties[field.field]);
+                                }
+                            });
+                            crimeCategoryValues[field.field] = Array.from(values).sort();
+                            console.log(`Cached values for ${field.field}:`, crimeCategoryValues[field.field]);
+                        });
+                    }
+
+                    if (callback) callback();
+                })
+                .catch(error => console.error("Error loading GeoJSON:", error));
+        }
+
+        // Define available category fields for each data type
+        const callCategoryFields = [
+            { field: 'priority', label: 'Call Priority' },
+            { field: 'call_type', label: 'Call Type' },
+            { field: 'final_call_type_description', label: 'Final Call Type' },
+            { field: 'initial_type_description', label: 'Initial Type' },
+            { field: 'event_clearance_description', label: 'Event Description' },
+            { field: 'call_priority_description', label: 'Priority Description' },
+            { field: 'call_origin_description', label: 'Call Origin' },
+            { field: 'dispatch_precinct', label: 'Precinct' },
+            { field: 'dispatch_sector', label: 'Sector' },
+            { field: 'dispatch_beat', label: 'Beat' },
+            { field: 'dispatch_neighborhood', label: 'Neighborhood' }
+        ];
+
+        const crimeCategoryFields = [
+            { field: 'offense_parent_group', label: 'Offense Group' },
+            { field: 'offense_category_name', label: 'Offense Category' },
+            { field: 'offense', label: 'Offense' },
+            { field: 'crime_against_category', label: 'Crime Against' },
+            { field: 'precinct', label: 'Precinct' },
+            { field: 'sector', label: 'Sector' },
+            { field: 'beat', label: 'Beat' },
+            { field: 'mcpp', label: 'MCPP' },
+            { field: 'district', label: 'District' }
+        ];
+
+        // Update category dropdowns
+        function populateCategoryDropdown() {
+            console.log("Populating category dropdowns...");
+            
+            // Get the field selects from the query builder
+            const fieldSelects = document.querySelectorAll('.field-select');
+            
+            // Clear existing options
+            fieldSelects.forEach(select => {
+                select.innerHTML = '<option value="">Select Field</option>';
+            });
+
+            // Add field options based on query type
+            const queryType = document.getElementById('queryTypeSelect').value;
+            const fields = queryType === 'calls' ? callCategoryFields : crimeCategoryFields;
+            
+            fieldSelects.forEach(select => {
+                fields.forEach(field => {
+                    select.add(new Option(field.label, field.field));
+                });
+            });
+        }
+
+        // Get selected categories
+        function getSelectedCallCategory() {
+            return {
+                field: '',
+                value: ''
+            };
+        }
+
+        function getSelectedCrimeCategory() {
+            return {
+                field: '',
+                value: ''
+            };
+        }
+
+        // Update filterData function to handle deselection
+        function filterData(startDate, endDate) {
+            // Create a unique key for the current filter state
+            const currentFilterKey = JSON.stringify({
+                startDate: startDate.getTime(),
+                endDate: endDate.getTime(),
+                queryType: document.getElementById('queryTypeSelect').value,
+                conditions: Array.from(document.querySelectorAll('.query-condition')).map(condition => {
+                    const field = condition.querySelector('.field-select').value;
+                    const operator = condition.querySelector('.operator-select').value;
+                    const valueSelect = condition.querySelector('.value-select');
+                    const valueInput = condition.querySelector('.value-input');
+                    const value = valueSelect.style.display !== 'none' ? valueSelect.value : valueInput.value;
+                    return { field, operator, value };
+                })
+            });
+
+            // Check if filters actually changed before running expensive operations
+            if (lastFilterParams.filterKey === currentFilterKey) {
+                console.log("Filter criteria unchanged, skipping redundant processing.");
+                return;
+            }
+
+            // Clear existing clusters
+            callClusters.clearLayers();
+            crimeClusters.clearLayers();
+            callLayer.clearLayers();
+            crimeLayer.clearLayers();
+
+            // Filter calls data
+            cachedFilteredCalls = allCallsData.features.filter(feature => {
+                const featureDate = new Date(feature.properties.original_time_queued);
+                return isDateInRange(featureDate, startDate, endDate);
+            });
+
+            // Filter crime data
+            cachedFilteredCrimes = allCrimeData.features.filter(feature => {
+                const featureDate = new Date(feature.properties.offense_start_datetime);
+                return isDateInRange(featureDate, startDate, endDate);
+            });
+
+            // Process filtered data
+            cachedFilteredCalls.forEach(feature => {
+                processFeature(feature, "blue", callPopup);
+                // Add to point layer as well
+                if (feature.geometry && feature.geometry.coordinates) {
+                    let latlng = L.latLng(feature.geometry.coordinates[1], feature.geometry.coordinates[0]);
+                    let marker = L.circleMarker(latlng, {
+                        radius: 6,
+                        fillColor: "blue",
+                        color: "#000",
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    });
+                    callPopup(feature, marker);
+                    marker.featureProperties = feature.properties;
+                    marker.feature = feature;
+                    callLayer.addLayer(marker);
+                }
+            });
+
+            cachedFilteredCrimes.forEach(feature => {
+                processFeature(feature, "red", crimePopup);
+                // Add to point layer as well
+                if (feature.geometry && feature.geometry.coordinates) {
+                    let latlng = L.latLng(feature.geometry.coordinates[1], feature.geometry.coordinates[0]);
+                    let marker = L.circleMarker(latlng, {
+                        radius: 6,
+                        fillColor: "red",
+                        color: "#000",
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    });
+                    crimePopup(feature, marker);
+                    marker.featureProperties = feature.properties;
+                    marker.feature = feature;
+                    feature._cachedMarker = marker;
+                }
+            });
+
+            // Update heatmaps and sidebar
+            updateHeatmaps(startDate, endDate);
+            listMarkers();
+
+            // Update charts after filtering
+            updateCharts();
+
+            // Update last used filter parameters
+            lastFilterParams = { 
+                filterKey: currentFilterKey,
+                startDate, 
+                endDate
+            };
+        }
+
+        // Find min/max dates for selected year
+        function findMinMaxDates(year) {
+            let minDate = null;
+            let maxDate = null;
+
+            if (allCallsData && allCallsData.features) {
+                allCallsData.features
+                    .filter(feature => new Date(feature.properties.original_time_queued).getFullYear() === Number(year))
+                    .forEach(feature => {
+                        const date = new Date(feature.properties.original_time_queued);
+                        if (!minDate || date < minDate) {
+                            minDate = date;
+                        }
+                        if (!maxDate || date > maxDate) {
+                            maxDate = date;
+                        }
+                    });
+            }
+
+            if (allCrimeData && allCrimeData.features) {
+                allCrimeData.features
+                    .filter(feature => new Date(feature.properties.offense_start_datetime).getFullYear() === Number(year))
+                    .forEach(feature => {
+                        const date = new Date(feature.properties.offense_start_datetime);
+                        if (!minDate || date < minDate) {
+                            minDate = date;
+                        }
+                        if (!maxDate || date > maxDate) {
+                            maxDate = date;
+                        }
+                    });
+            }
+
+            return {
+                minDate: minDate ? minDate.getTime() : null,
+                maxDate: maxDate ? maxDate.getTime() : null
+            };
+        }
+
+        // Add event listeners for clear buttons
+        document.addEventListener("DOMContentLoaded", function() {
+            // Year select change handler
+            document.getElementById("yearSelect").addEventListener("change", function() {
+                const year = this.value;
+                const { minDate, maxDate } = findMinMaxDates(year);
+                if (minDate && maxDate) {
+                    updateSliders(minDate, maxDate);
+                    debouncedFilterData(new Date(minDate), new Date(maxDate));
+                }
+            });
+
+            // Date input handlers
+            document.getElementById("startDateInput").addEventListener("input", function () {
+                updateDateLabels();
+                const startDate = new Date(parseInt(this.value));
+                const endDate = new Date(parseInt(document.getElementById("endDateInput").value));
+                if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+                    debouncedFilterData(startDate, endDate);
+                }
+            });
+
+            document.getElementById("endDateInput").addEventListener("input", function () {
+                updateDateLabels();
+                const startDate = new Date(parseInt(document.getElementById("startDateInput").value));
+                const endDate = new Date(parseInt(this.value));
+                if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+                    debouncedFilterData(startDate, endDate);
+                }
+            });
+        });
+
+        // Add event listener to fit data button
+        document.getElementById("fitDataButton").addEventListener("click", function () {
+            fitDataToView();
+        });
+
+        // Function to fit data to view
+        function fitDataToView() {
+            let bounds = L.latLngBounds(); // Create empty bounds
+            let startDate = new Date(Number(document.getElementById("startDateInput").value));
+            let endDate = new Date(Number(document.getElementById("endDateInput").value));
+
+            // Iterate through call clusters
+            callClusters.eachLayer(marker => {
+                let featureDate = new Date(marker.featureProperties.original_time_queued);
+                if (featureDate >= startDate && featureDate <= endDate) {
+                    bounds.extend(marker.getLatLng()); // Extend bounds with marker's latlng
+                }
+            });
+
+            // Iterate through crime clusters
+            crimeClusters.eachLayer(marker => {
+                let featureDate = new Date(marker.featureProperties.offense_start_datetime);
+                if (featureDate >= startDate && featureDate <= endDate) {
+                    bounds.extend(marker.getLatLng()); // Extend bounds with marker's latlng
+                }
+            });
+
+            // Fit bounds to map if there are any points
+            if (bounds.isValid()) {
+                map.fitBounds(bounds);
+            }
+        }
+
+        let filteredCallsData = [];
+        let filteredCrimeData = [];
+
+        // Update date inputs
+        function updateDateInputs(minDate, maxDate) {
+            document.getElementById("startDateInput").value = minDate;
+            document.getElementById("endDateInput").value = maxDate.slice(0, 10);
+        }
+
+        // Create sidebar list function
+        function listMarkers() {
+            const sidebar = document.getElementById("sidebar");
+            sidebar.innerHTML = "<h3>Visible Data Points</h3>"; // Reset sidebar
+
+            map.eachLayer(function (layer) {
+                if (layer instanceof L.CircleMarker) {
+                    if (map.getBounds().contains(layer.getLatLng())) {
+                        createSidebarElement(layer);
+                    }
+                }
+            });
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) {
+                return "N/A";
+            }
+
+            try {
+                const date = new Date(dateString);
+
+                if (isNaN(date.getTime())) {
+                    return "Invalid Date";
+                }
+
+                let hours = date.getHours();
+                const minutes = date.getMinutes().toString().padStart(2, '0');
+                const seconds = date.getSeconds().toString().padStart(2, '0');
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12;
+                hours = hours ? hours : 12; // the hour '0' should be '12'
+
+                const formattedDate = `<ins>${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}/${date.getFullYear()}</ins> at <ins>${hours}:${minutes}:${seconds} ${ampm}</ins>`;
+
+                return formattedDate;
+            } catch (error) {
+                console.error("Error formatting date:", error);
+                return "Error";
+            }
+        }
+
+        function formatTimeDifference(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainingSeconds = seconds % 60;
+
+            let timeString = "";
+
+            if (hours > 0) {
+                timeString += `${hours} hour${hours > 1 ? 's' : ''}, `;
+            }
+
+            if (minutes > 0 || hours > 0) { // Include minutes if hours are present or if minutes are present
+                timeString += `${minutes} minute${minutes > 1 ? 's' : ''}, `;
+            }
+
+            timeString += `${remainingSeconds} second${remainingSeconds !== 1 ? 's' : ''}`;
+
+            // Remove trailing comma and space if present
+            if (timeString.endsWith(", ")) {
+                timeString = timeString.slice(0, -2);
+            }
+
+            return timeString;
+        }
+
+        // Popup functions
+        function crimePopup(feature, layer) {
+            let props = feature.properties;
+            let popupContent = `<b>🚔 Crime Report</b><br><hr>
+                <b>Offense:</b> ${props.offense || "N/A"}<br>
+                <b>Category:</b> ${props.offense_parent_group || "N/A"} (${props.crime_against_category || "N/A"})<br>
+                <b>Report Number:</b> ${props.report_number || "N/A"}<br>
+                <b>Occurred:</b> ${formatDate(props.offense_start_datetime) || "N/A"}<br>
+                <b>Reported:</b> ${formatDate(props.report_datetime) || "N/A"}<br>
+                <b>Location:</b> ${props._100_block_address || "N/A"}<br>
+                <b>Precinct/Sector/Beat:</b> ${props.precinct || "N/A"} / ${props.sector || "N/A"} / ${props.beat || "N/A"}`;
+            layer.bindPopup(popupContent);
+        }
+        function callPopup(feature, layer) {
+            let props = feature.properties;
+            const responseTimeSeconds = props.on_scene_response_time;
+            let responseTimeString = "N/A";
+            if (!isNaN(responseTimeSeconds) && responseTimeSeconds >= 0) {
+                responseTimeString = formatTimeDifference(responseTimeSeconds);
+            }
+            let popupContent = `<b>📞 911 Call - Priority ${props.priority}</b><br><hr>
+                <b>Outcome:</b> ${props.event_clearance_description || "N/A"}<br>
+                <b>Call Method:</b> ${props.call_type || "N/A"}<br>
+                <b>Initial Call Type:</b> ${props.initial_type_description || "N/A"}<br>
+                <b>Final Call Type:</b> ${props.final_call_type_description || "N/A"}<br>
+                <b>Priority:</b> ${props.priority || "N/A"}<br>
+                <b>Queued Time:</b> ${formatDate(props.original_time_queued) || "N/A"}<br>
+                <b>Arrival Time:</b> ${formatDate(props.at_scene_time) || "N/A"}<br>
+                <b>Response Time:</b> ${responseTimeString || "N/A"}<br>
+                <b>Location:</b> ${props.dispatch_neighborhood || "N/A"}<br>
+                <b>Precinct/Sector/Beat:</b> ${props.dispatch_precinct || "N/A"} / ${props.dispatch_sector || "N/A"} / ${props.dispatch_beat || "N/A"}`;
+            layer.bindPopup(popupContent);
+        }
+
+        // Load GeoJSON data (with date field for filtering)
+        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/2024Calls.geojson", callLayer, "blue", callPopup, callHeat, callClusters, "original_time_queued", checkAndInit);
+        loadGeoJSON("https://BAllianceW.github.io/datamaptest/Data/2017to2024CrimeData.geojson", crimeLayer, "red", crimePopup, crimeHeat, crimeClusters, "offense_start_datetime", checkAndInit);
+
+        function checkAndInit() {
+            console.log("Checking data load status:", {
+                callsLoaded: !!allCallsData,
+                crimesLoaded: !!allCrimeData,
+                callsCount: allCallsData?.features?.length,
+                crimesCount: allCrimeData?.features?.length
+            });
+
+            if (allCallsData && allCrimeData && 
+                allCallsData.features.length > 0 && 
+                allCrimeData.features.length > 0) {
+                console.log("Data fully loaded, running initialSetup()");
+                initialSetup();
+            } else {
+                console.log("Data not fully loaded, waiting...");
+            }
+        }
+
+        // Populate year dropdown
+        function populateYearSelect() {
+            const yearSelect = document.getElementById("yearSelect");
+            const years = new Set(); // Use a Set to avoid duplicates
+
+            if (allCallsData && allCallsData.features) {
+                allCallsData.features.forEach(feature => {
+                    const date = new Date(feature.properties.original_time_queued);
+                    if (!isNaN(date.getFullYear())) {
+                        years.add(date.getFullYear());
+                    }
+                });
+            }
+
+            if (allCrimeData && allCrimeData.features) {
+                allCrimeData.features.forEach(feature => {
+                    const date = new Date(feature.properties.offense_start_datetime);
+                    if (!isNaN(date.getFullYear())) {
+                        years.add(date.getFullYear());
+                    }
+                });
+            }
+
+            // Sort years in descending order
+            const sortedYears = Array.from(years).sort((a, b) => b - a);
+
+            // Clear existing options
+            yearSelect.innerHTML = "";
+
+            // Add default option
+            const defaultOption = document.createElement("option");
+            defaultOption.value = "";
+            defaultOption.text = "Select Year";
+            yearSelect.appendChild(defaultOption);
+
+            // Add year options
+            sortedYears.forEach(year => {
+                const option = document.createElement("option");
+                option.value = year;
+                option.text = year;
+                yearSelect.appendChild(option);
+            });
+
+            // Set initial value to most recent year
+            if (sortedYears.length > 0) {
+                yearSelect.value = sortedYears[0];
+            }
+        }
+
+        // Add the getFeatureCategory function here
+        function getFeatureCategory(feature) {
+            if (feature.properties.offense) {
+                // For crime data
+                return feature.properties.offense_parent_group || 
+                       feature.properties.offense_category_name || 
+                       feature.properties.offense || 
+                       "Unknown Crime";
+            } else if (feature.properties.final_call_type_description) {
+                // For call data
+                return feature.properties.final_call_type_description || 
+                       feature.properties.call_type || 
+                       feature.properties.event_clearance_description || 
+                       "Unknown Call";
+            }
+            return "Unknown";
+        }
+
+        // Listen for layer changes
+        function setupLayerListeners() {
+            // Listen for cluster layer changes
+            callClusters.on('layeradd layerremove', function() {
+                setTimeout(listMarkers, 100);
+            });
+            crimeClusters.on('layeradd layerremove', function() {
+                setTimeout(listMarkers, 100);
+            });
+
+            // Listen for layer control changes
+            map.on('overlayadd overlayremove', function(e) {
+                setTimeout(listMarkers, 100);
+            });
+        }
+
+        // Initial setup
+        function initialSetup() {
+            console.log("Starting initial setup...");
+            
+            // Populate dropdowns
+            populateYearSelect();
+            populateCategoryDropdown();
+            
+            // Initialize charts
+            initializeCharts();
+            
+            // Get initial year and date range
+            const initialYear = document.getElementById("yearSelect").value;
+            console.log("Initial year selected:", initialYear);
+            
+            if (initialYear) {
+                const { minDate, maxDate } = findMinMaxDates(initialYear);
+                console.log("Date range:", { minDate, maxDate });
+                
+                if (minDate && maxDate) {
+                    updateSliders(minDate, maxDate);
+                    filterData(new Date(minDate), new Date(maxDate));
+                } else {
+                    console.error("Invalid date range during initial setup");
+                }
+            } else {
+                console.error("No initial year selected");
+            }
+
+            // Setup layer listeners
+            setupLayerListeners();
+        }
+        
+        // Add Layer Controls
+        let overlayMaps = {
+            "911 Calls Points": callLayer,
+            "Crime Reports Points": crimeLayer,
+            "911 Calls Clusters": callClusters,
+            "Crime Reports Clusters": crimeClusters,
+            "911 Calls Heatmap": callHeat,
+            "Crime Reports Heatmap": crimeHeat
+        };
+        L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map);
+
+        // Only add call clusters by default
+        callClusters.addTo(map);
+
+        let filterTimeout;
+        let cachedFilteredCalls = [];
+        let cachedFilteredCrimes = [];
+        let lastFilterParams = {};
+
+        function debouncedFilterData(startDate, endDate) {
+            clearTimeout(filterTimeout);
+            filterTimeout = setTimeout(() => {
+                filterData(startDate, endDate);
+            }, 250);
+        }
+
+        function isDateInRange(featureDate, startDate, endDate) {
+            if (!featureDate || !startDate || !endDate) return false;
+            const date = new Date(featureDate);
+            return date >= startDate && date <= endDate;
+        }
+
+        function processFeature(feature, fillColor, popupFunction) {
+            if (!feature.geometry || !feature.geometry.coordinates) return;
+
+            // Get query conditions
+            const queryType = document.getElementById('queryTypeSelect').value;
+            const conditions = Array.from(document.querySelectorAll('.query-condition')).map(condition => {
+                const field = condition.querySelector('.field-select').value;
+                const operator = condition.querySelector('.operator-select').value;
+                const valueSelect = condition.querySelector('.value-select');
+                const valueInput = condition.querySelector('.value-input');
+                const value = valueSelect.style.display !== 'none' ? valueSelect.value : valueInput.value;
+                return { field, operator, value };
+            }).filter(condition => condition.field && condition.value);
+
+            // Check if feature matches query conditions
+            const matchesQuery = conditions.length === 0 || conditions.every(condition => {
+                const fieldValue = feature.properties[condition.field];
+                if (fieldValue === undefined) return false;
+
+                switch (condition.operator) {
+                    case '=':
+                        return String(fieldValue) === String(condition.value);
+                    case '!=':
+                        return String(fieldValue) !== String(condition.value);
+                    case '>':
+                        return Number(fieldValue) > Number(condition.value);
+                    case '<':
+                        return Number(fieldValue) < Number(condition.value);
+                    case '>=':
+                        return Number(fieldValue) >= Number(condition.value);
+                    case '<=':
+                        return Number(fieldValue) <= Number(condition.value);
+                    case 'contains':
+                        return String(fieldValue).toLowerCase().includes(String(condition.value).toLowerCase());
+                    case 'startsWith':
+                        return String(fieldValue).toLowerCase().startsWith(String(condition.value).toLowerCase());
+                    case 'endsWith':
+                        return String(fieldValue).toLowerCase().endsWith(String(condition.value).toLowerCase());
+                    default:
+                        return true;
+                }
+            });
+
+            if (fillColor === "blue" && matchesQuery) {
+                if (!feature._cachedMarker) {
+                    let latlng = L.latLng(feature.geometry.coordinates[1], feature.geometry.coordinates[0]);
+                    let marker = L.circleMarker(latlng, {
+                        radius: 6,
+                        fillColor: fillColor,
+                        color: "#000",
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    });
+                    popupFunction(feature, marker);
+                    marker.featureProperties = feature.properties;
+                    marker.feature = feature;
+                    feature._cachedMarker = marker;
+                }
+                callClusters.addLayer(feature._cachedMarker);
+            } 
+            else if (fillColor === "red" && matchesQuery) {
+                if (!feature._cachedMarker) {
+                    let latlng = L.latLng(feature.geometry.coordinates[1], feature.geometry.coordinates[0]);
+                    let marker = L.circleMarker(latlng, {
+                        radius: 6,
+                        fillColor: fillColor,
+                        color: "#000",
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    });
+                    popupFunction(feature, marker);
+                    marker.featureProperties = feature.properties;
+                    marker.feature = feature;
+                    feature._cachedMarker = marker;
+                }
+                crimeClusters.addLayer(feature._cachedMarker);
+            }
+        }
+
+        function updateHeatmaps(startDate, endDate) {
+            let callHeatPoints = [];
+            let crimeHeatPoints = [];
+
+            cachedFilteredCalls.forEach(feature => {
+                if (feature.geometry && feature.geometry.coordinates) {
+                    callHeatPoints.push([feature.geometry.coordinates[1], feature.geometry.coordinates[0]]);
+                }
+            });
+
+            cachedFilteredCrimes.forEach(feature => {
+                if (feature.geometry && feature.geometry.coordinates) {
+                    crimeHeatPoints.push([feature.geometry.coordinates[1], feature.geometry.coordinates[0]]);
+                }
+            });
+
+            if (callHeat._map) { //Check if heatmap is added to map.
+                callHeat.setLatLngs(callHeatPoints);
+            }
+            if (crimeHeat._map){
+                crimeHeat.setLatLngs(crimeHeatPoints);
+            }
+        }
+
+        map.on('moveend', listMarkers);
+
+        // Add event listeners for clear buttons
+        document.addEventListener("DOMContentLoaded", function() {
+            // Year select change handler
+            document.getElementById("yearSelect").addEventListener("change", function() {
+                const year = this.value;
+                const { minDate, maxDate } = findMinMaxDates(year);
+                if (minDate && maxDate) {
+                    updateSliders(minDate, maxDate);
+                    debouncedFilterData(new Date(minDate), new Date(maxDate));
+                }
+            });
+
+            // Date input handlers
+            document.getElementById("startDateInput").addEventListener("input", function () {
+                updateDateLabels();
+                const startDate = new Date(parseInt(this.value));
+                const endDate = new Date(parseInt(document.getElementById("endDateInput").value));
+                if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+                    debouncedFilterData(startDate, endDate);
+                }
+            });
+
+            document.getElementById("endDateInput").addEventListener("input", function () {
+                updateDateLabels();
+                const startDate = new Date(parseInt(document.getElementById("startDateInput").value));
+                const endDate = new Date(parseInt(this.value));
+                if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+                    debouncedFilterData(startDate, endDate);
+                }
+            });
+        });
+
+        let callsByHourChart;
+        let crimesByHourChart;
+        let callsByDayChart;
+        let crimesByDayChart;
+        let responseTimeChart;
+
+        // Initialize charts
+        function initializeCharts() {
+            const hourLabels = Array.from({length: 24}, (_, i) => `${i}:00`);
+            const dayLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+            // Calls by Hour Chart
+            const callsByHourCtx = document.getElementById('callsByHourChart').getContext('2d');
+            callsByHourChart = new Chart(callsByHourCtx, {
+                type: 'bar',
+                data: {
+                    labels: hourLabels,
+                    datasets: [{
+                        label: 'Calls',
+                        data: Array(24).fill(0),
+                        backgroundColor: 'rgba(0, 0, 255, 0.5)',
+                        borderColor: 'rgba(0, 0, 255, 0.8)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Crimes by Hour Chart
+            const crimesByHourCtx = document.getElementById('crimesByHourChart').getContext('2d');
+            crimesByHourChart = new Chart(crimesByHourCtx, {
+                type: 'bar',
+                data: {
+                    labels: hourLabels,
+                    datasets: [{
+                        label: 'Crimes',
+                        data: Array(24).fill(0),
+                        backgroundColor: 'rgba(255, 0, 0, 0.5)',
+                        borderColor: 'rgba(255, 0, 0, 0.8)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Calls by Day Chart
+            const callsByDayCtx = document.getElementById('callsByDayChart').getContext('2d');
+            callsByDayChart = new Chart(callsByDayCtx, {
+                type: 'bar',
+                data: {
+                    labels: dayLabels,
+                    datasets: [{
+                        label: 'Calls',
+                        data: Array(7).fill(0),
+                        backgroundColor: 'rgba(0, 0, 255, 0.5)',
+                        borderColor: 'rgba(0, 0, 255, 0.8)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Crimes by Day Chart
+            const crimesByDayCtx = document.getElementById('crimesByDayChart').getContext('2d');
+            crimesByDayChart = new Chart(crimesByDayCtx, {
+                type: 'bar',
+                data: {
+                    labels: dayLabels,
+                    datasets: [{
+                        label: 'Crimes',
+                        data: Array(7).fill(0),
+                        backgroundColor: 'rgba(255, 0, 0, 0.5)',
+                        borderColor: 'rgba(255, 0, 0, 0.8)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Response Time Chart
+            const responseTimeCtx = document.getElementById('responseTimeChart').getContext('2d');
+            responseTimeChart = new Chart(responseTimeCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Priority 1', 'Priority 2', 'Priority 3', 'Priority 4', 'Priority 5', 'Priority 6', 'Priority 7'],
+                    datasets: [
+                        {
+                            label: 'Average Response Time (minutes)',
+                            data: Array(7).fill(0),
+                            backgroundColor: 'rgba(0, 0, 255, 0.5)',
+                            borderColor: 'rgba(0, 0, 255, 0.8)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Median Response Time (minutes)',
+                            data: Array(7).fill(0),
+                            type: 'line',
+                            borderColor: 'rgba(255, 0, 0, 0.8)',
+                            backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Minutes'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.parsed.y.toFixed(1);
+                                    return `${context.dataset.label}: ${value} minutes`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update charts with filtered data
+        function updateCharts() {
+            // Initialize arrays for calls and crimes by hour and day
+            const callsByHour = new Array(24).fill(0);
+            const callsByDay = new Array(7).fill(0);
+            const crimesByHour = new Array(24).fill(0);
+            const crimesByDay = new Array(7).fill(0);
+            
+            // Initialize response time data for each priority
+            const responseTimeData = {};
+            for (let i = 1; i <= 7; i++) {
+                responseTimeData[i] = {
+                    count: 0,
+                    sum: 0,
+                    values: []
+                };
+            }
+
+            // Process calls data
+            cachedFilteredCalls.forEach(feature => {
+                const date = new Date(feature.properties.original_time_queued);
+                const hour = date.getHours();
+                const day = date.getDay();
+                
+                callsByHour[hour]++;
+                callsByDay[day]++;
+
+                // Calculate response time in minutes
+                const responseTime = feature.properties.on_scene_response_time;
+                if (responseTime && responseTime > 0) {
+                    const priority = feature.properties.priority;
+                    if (priority >= 1 && priority <= 7) {
+                        const responseTimeMinutes = responseTime / 60;
+                        responseTimeData[priority].count++;
+                        responseTimeData[priority].sum += responseTimeMinutes;
+                        responseTimeData[priority].values.push(responseTimeMinutes);
+                    }
+                }
+            });
+
+            // Process crimes data
+            cachedFilteredCrimes.forEach(feature => {
+                const date = new Date(feature.properties.offense_start_datetime);
+                const hour = date.getHours();
+                const day = date.getDay();
+                
+                crimesByHour[hour]++;
+                crimesByDay[day]++;
+            });
+
+            // Update chart titles with record counts
+            const totalCalls = cachedFilteredCalls.length;
+            const totalCrimes = cachedFilteredCrimes.length;
+
+            // Update chart titles
+            document.querySelector('.chart-wrapper:nth-child(1) .chart-title').textContent = 
+                `Calls by Hour (${totalCalls} records)`;
+            document.querySelector('.chart-wrapper:nth-child(2) .chart-title').textContent = 
+                `Crimes by Hour (${totalCrimes} records)`;
+            document.querySelector('.chart-wrapper:nth-child(3) .chart-title').textContent = 
+                `Calls by Day of Week (${totalCalls} records)`;
+            document.querySelector('.chart-wrapper:nth-child(4) .chart-title').textContent = 
+                `Crimes by Day of Week (${totalCrimes} records)`;
+            document.querySelector('.chart-wrapper:nth-child(5) .chart-title').textContent = 
+                `Average Response Time by Priority (${totalCalls} records)`;
+
+            // Update map title with record counts
+            const mapTitle = document.querySelector('h1');
+            mapTitle.textContent = `Public Data Map (${totalCalls} Calls, ${totalCrimes} Crimes)`;
+
+            // Update response time chart
+            const responseTimeChart = Chart.getChart('responseTimeChart');
+            if (responseTimeChart) {
+                const labels = [];
+                const averages = [];
+                const medians = [];
+
+                // Only include priority levels that have data
+                for (let i = 1; i <= 7; i++) {
+                    const stats = responseTimeData[i];
+                    if (stats && stats.count > 0) {
+                        // Calculate average
+                        const average = stats.sum / stats.count;
+                        
+                        // Calculate median
+                        const sortedValues = [...stats.values].sort((a, b) => a - b);
+                        const median = sortedValues[Math.floor(sortedValues.length / 2)];
+                        
+                        labels.push(`Priority ${i}`);
+                        averages.push(average);
+                        medians.push(median);
+                    }
+                }
+
+                // Only update the chart if we have data
+                if (labels.length > 0) {
+                    responseTimeChart.data.labels = labels;
+                    responseTimeChart.data.datasets[0].data = averages;
+                    responseTimeChart.data.datasets[1].data = medians;
+                    responseTimeChart.update();
+                } else {
+                    // If no data, show empty chart with message
+                    responseTimeChart.data.labels = ['No data available'];
+                    responseTimeChart.data.datasets[0].data = [0];
+                    responseTimeChart.data.datasets[1].data = [0];
+                    responseTimeChart.update();
+                }
+            }
+
+            // Update other charts
+            callsByHourChart.data.datasets[0].data = callsByHour;
+            callsByHourChart.update();
+            crimesByHourChart.data.datasets[0].data = crimesByHour;
+            crimesByHourChart.update();
+            callsByDayChart.data.datasets[0].data = callsByDay;
+            callsByDayChart.update();
+            crimesByDayChart.data.datasets[0].data = crimesByDay;
+            crimesByDayChart.update();
+        }
+
+        // Helper function to format minutes into hours and minutes
+        function formatTimeInHoursAndMinutes(minutes) {
+            if (!minutes || minutes === 0) return '0m';
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = Math.round(minutes % 60);
+            if (hours === 0) return `${remainingMinutes}m`;
+            return `${hours}h ${remainingMinutes}m`;
+        }
+
+    </script>
+</body>
