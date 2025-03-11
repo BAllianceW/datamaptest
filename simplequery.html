@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Response Time Lookup</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -53,15 +55,15 @@
             background-color: #f5f5f5;
         }
         tr:nth-child(even) {
-            background-color: #fafafa;
+            background-color: transparent;
         }
-        .priority-1 { background-color: rgba(144, 238, 144, 0.2); }
-        .priority-2 { background-color: rgba(255, 182, 193, 0.2); }
-        .priority-3 { background-color: rgba(147, 112, 219, 0.2); }
-        .priority-4 { background-color: rgba(100, 149, 237, 0.2); }
-        .priority-5 { background-color: rgba(255, 192, 203, 0.2); }
-        .priority-7 { background-color: rgba(176, 196, 222, 0.2); }
-        .priority-9 { background-color: rgba(255, 105, 180, 0.2); }
+        .priority-1 { background-color: rgba(232, 74, 95, 0.6) !important; }
+        .priority-2 { background-color: rgba(239, 82, 87, 0.6) !important; }
+        .priority-3 { background-color: rgba(245, 91, 79, 0.6) !important; }
+        .priority-4 { background-color: rgba(250, 100, 70, 0.6) !important; }
+        .priority-5 { background-color: rgba(253, 111, 60, 0.6) !important; }
+        .priority-7 { background-color: rgba(255, 122, 48, 0.6) !important; }
+        .priority-9 { background-color: rgba(255, 134, 34, 0.6) !important; }
         .loading {
             text-align: center;
             margin: 20px;
@@ -74,6 +76,84 @@
             font-style: italic;
             color: #ff0000;
         }
+        .expandable-button {
+            cursor: pointer;
+            padding: 2px 6px;
+            margin-left: 10px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 0.8em;
+            background-color: #f8f8f8;
+        }
+        .expandable-row {
+            display: none;
+            background-color: #f8f8f8;
+        }
+        .expandable-row td {
+            padding-left: 30px;
+            font-size: 0.95em;
+        }
+        .onview-row { 
+            background-color: #f8f8f8 !important;
+        }
+        .backup-row { background-color: rgba(100, 149, 237, 0.1); }
+        .backup-urgent-row { background-color: rgba(255, 140, 0, 0.1); }
+        
+        /* Map Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 800px;
+            border-radius: 4px;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: black;
+        }
+
+        #map {
+            height: 600px;
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .map-button {
+            margin-left: 10px;
+            padding: 5px 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .beat-label {
+            background: none;
+            border: none;
+            box-shadow: none;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -85,6 +165,7 @@
         <input type="date" id="endDate">
         <label for="dispatchBeat">Dispatch Beats (comma-separated):</label>
         <input type="text" id="dispatchBeat" placeholder="e.g., B1, C2">
+        <button class="map-button" onclick="openMapSelector()">Select from Map</button>
         <button onclick="fetchData()">Get Response Times</button>
         <button class="show-query-btn" onclick="toggleQuery()">Show API Query</button>
     </div>
@@ -92,8 +173,26 @@
     <div id="query-display" class="query-info"></div>
     <div id="results"></div>
 
+    <!-- Add Map Modal -->
+    <div id="mapModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeMapSelector()">&times;</span>
+            <h3>Select Beats from Map</h3>
+            <div id="map"></div>
+            <div style="margin-top: 10px; text-align: right;">
+                <button onclick="applyBeatSelection()" style="margin-right: 10px;">Apply Selection</button>
+                <button onclick="closeMapSelector()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentQueries = [];
+        const datasetId = "33kz-ixgy";
+        const apiUrl = `https://data.seattle.gov/resource/${datasetId}.json`;
+        let map = null;
+        let beatLayers = {};
+        let selectedBeats = new Set();
 
         function toggleQuery() {
             const queryDisplay = document.getElementById('query-display');
@@ -126,8 +225,6 @@
             const resultsDiv = document.getElementById("results");
             resultsDiv.innerHTML = '<div class="loading">Calculating query size...</div>';
             
-            const datasetId = "33kz-ixgy";
-            const apiUrl = `https://data.seattle.gov/resource/${datasetId}.json`;
             let beatStats = {};
 
             // Get a rough count first
@@ -136,10 +233,7 @@
                 const countQuery = `?$select=count(*) as count&$where=` +
                     `cad_event_original_time_queued >= '${startDate}T00:00:00' AND ` +
                     `cad_event_original_time_queued <= '${endDate}T23:59:59' AND ` +
-                    `dispatch_beat='${beat}' AND ` +
-                    `initial_call_type != 'ONVIEW' AND ` +
-                    `initial_call_type != 'BACKUPONLY' AND ` +
-                    `initial_call_type != 'BACKUPONLY-URGENT'`;
+                    `dispatch_beat='${beat}'`;
                 
                 currentQueries[0] = countQuery; // Store count query
                 try {
@@ -179,17 +273,22 @@
                         let offset = 0;
                         let allData = [];
                         let priorityGroups = {};
+                        let specialGroups = {
+                            ONVIEW: {},
+                            BACKUP: {},
+                            'BACKUP-URGENT': {}
+                        };
                         
                         while (true) {
                             const query = `?$where=cad_event_original_time_queued >= '${startDate}T00:00:00' AND ` +
                                 `cad_event_original_time_queued <= '${endDate}T23:59:59' AND ` +
-                                `dispatch_beat='${beat}' AND ` +
-                                `initial_call_type != 'ONVIEW' AND ` +
-                                `initial_call_type != 'BACKUPONLY' AND ` +
-                                `initial_call_type != 'BACKUPONLY-URGENT'` +
+                                `dispatch_beat='${beat}'` +
                                 `&$limit=1000&$offset=${offset}`;
                             
-                            currentQueries[1] = query; // Store data query
+                            // Only store the first query for display
+                            if (offset === 0) {
+                                currentQueries[1] = query;
+                            }
                             try {
                                 const response = await fetch(apiUrl + query);
                                 const data = await response.json();
@@ -197,7 +296,6 @@
                                 allData = allData.concat(data);
                                 offset += 1000;
 
-                                // Update countdown and wait 1 second
                                 remainingTime = Math.max(0, remainingTime - 1);
                                 updateCountdown();
                                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -209,41 +307,93 @@
                         }
 
                         // Process data for this beat
+                        console.log(`Processing ${allData.length} records for beat ${beat}`);
+                        
                         beatStats[beat] = {
-                            totalCalls: allData.length,
-                            priorities: {}
+                            totalCalls: 0,
+                            priorities: {},
+                            specialCategories: {
+                                ONVIEW: {}
+                            },
+                            onviewExamples: {} // Store example call types for each priority
                         };
 
+                        // Debug counters
+                        let debugCounts = {
+                            total: 0,
+                            withResponseTime: 0,
+                            validTimes: 0,
+                            byType: {
+                                DISPATCH: 0,
+                                ONVIEW: 0
+                            }
+                        };
+
+                        // First, categorize all data by call type and priority
                         allData.forEach(d => {
+                            debugCounts.total++;
+                            
                             if (d.cad_event_first_response_time_s_ && d.priority) {
+                                debugCounts.withResponseTime++;
                                 const responseTimeSeconds = Number(d.cad_event_first_response_time_s_);
                                 
-                                // Filter out unreasonably large times (> 24 hours) and negative times
                                 if (responseTimeSeconds > 0 && responseTimeSeconds < 86400) {
-                                    if (!priorityGroups[d.priority]) {
-                                        priorityGroups[d.priority] = [];
+                                    debugCounts.validTimes++;
+                                    
+                                    // Use call_type_indicator to categorize
+                                    if (d.call_type_indicator === 'ONVIEW') {
+                                        debugCounts.byType.ONVIEW++;
+                                        if (!beatStats[beat].specialCategories.ONVIEW[d.priority]) {
+                                            beatStats[beat].specialCategories.ONVIEW[d.priority] = [];
+                                            beatStats[beat].onviewExamples[d.priority] = new Set();
+                                        }
+                                        beatStats[beat].specialCategories.ONVIEW[d.priority].push(responseTimeSeconds);
+                                        if (d.final_call_type) {
+                                            beatStats[beat].onviewExamples[d.priority].add(d.final_call_type);
+                                        }
+                                    } else if (d.call_type_indicator === 'DISPATCH') {
+                                        debugCounts.byType.DISPATCH++;
+                                        if (!beatStats[beat].priorities[d.priority]) {
+                                            beatStats[beat].priorities[d.priority] = [];
+                                        }
+                                        beatStats[beat].priorities[d.priority].push(responseTimeSeconds);
+                                        beatStats[beat].totalCalls++; // Only count dispatched calls in total
                                     }
-                                    priorityGroups[d.priority].push(responseTimeSeconds);
                                 }
                             }
                         });
 
-                        // Calculate statistics for each priority
-                        for (let priority in priorityGroups) {
-                            const times = priorityGroups[priority];
+                        console.log('Debug counts:', debugCounts);
+                        console.log(`Beat ${beat} categories:`, {
+                            dispatch: Object.keys(beatStats[beat].priorities).length > 0 ? 
+                                Object.keys(beatStats[beat].priorities) : 'No dispatch calls',
+                            onview: Object.keys(beatStats[beat].specialCategories.ONVIEW).length > 0 ? 
+                                Object.keys(beatStats[beat].specialCategories.ONVIEW) : 'No onview calls'
+                        });
+
+                        // Calculate statistics for regular calls
+                        for (let priority in beatStats[beat].priorities) {
+                            const times = beatStats[beat].priorities[priority];
                             if (times.length > 0) {
-                                const sortedTimes = [...times].sort((a, b) => a - b);
-                                beatStats[beat].priorities[priority] = {
-                                    count: times.length,
-                                    mean: times.reduce((a, b) => a + b, 0) / times.length,
-                                    median: sortedTimes.length % 2 === 0 ? 
-                                        (sortedTimes[sortedTimes.length / 2 - 1] + sortedTimes[sortedTimes.length / 2]) / 2 :
-                                        sortedTimes[Math.floor(sortedTimes.length / 2)],
-                                    min: sortedTimes[0],
-                                    max: sortedTimes[sortedTimes.length - 1]
-                                };
+                                beatStats[beat].priorities[priority] = calculateStats(times);
+                                console.log(`Priority ${priority} stats:`, beatStats[beat].priorities[priority]);
                             }
                         }
+
+                        // Calculate statistics for special categories
+                        for (let category in beatStats[beat].specialCategories) {
+                            console.log(`Processing special category: ${category}`);
+                            for (let priority in beatStats[beat].specialCategories[category]) {
+                                const times = beatStats[beat].specialCategories[category][priority];
+                                if (times && times.length > 0) {
+                                    beatStats[beat].specialCategories[category][priority] = calculateStats(times);
+                                    console.log(`${category} Priority ${priority} stats:`, 
+                                        beatStats[beat].specialCategories[category][priority]);
+                                }
+                            }
+                        }
+
+                        console.log(`Completed processing beat ${beat}`);
                     }
                 } finally {
                     // Show completion
@@ -274,7 +424,35 @@
             }
         }
         
+        function calculateStats(times) {
+            const sortedTimes = [...times].sort((a, b) => a - b);
+            return {
+                count: times.length,
+                mean: times.reduce((a, b) => a + b, 0) / times.length,
+                median: sortedTimes.length % 2 === 0 ? 
+                    (sortedTimes[sortedTimes.length / 2 - 1] + sortedTimes[sortedTimes.length / 2]) / 2 :
+                    sortedTimes[Math.floor(sortedTimes.length / 2)],
+                min: sortedTimes[0],
+                max: sortedTimes[sortedTimes.length - 1]
+            };
+        }
+
+        function toggleRows(priority) {
+            const rows = document.querySelectorAll(`.expandable-row-${priority}`);
+            const button = document.querySelector(`#toggle-${priority}`);
+            const isExpanding = rows[0].style.display === 'none';
+            
+            rows.forEach(row => {
+                row.style.display = isExpanding ? 'table-row' : 'none';
+            });
+            
+            if (button) {
+                button.textContent = isExpanding ? '-' : '+';
+            }
+        }
+        
         function displayResults(beatStats) {
+            console.log('Displaying results for beats:', Object.keys(beatStats));
             const resultsDiv = document.getElementById("results");
             const allPriorities = new Set();
             Object.values(beatStats).forEach(beat => {
@@ -283,10 +461,10 @@
             const sortedPriorities = [...allPriorities].sort((a, b) => Number(a) - Number(b));
             
             let html = `
-                <h3>Results (Community-Generated Calls Only)</h3>
+                <h3>Results (Dispatch Calls)</h3>
                 <p style="color: #666; font-style: italic; margin-bottom: 20px;">
-                    Showing official SPD response times for community-generated calls only. Response time is measured from call receipt to first unit arrival on scene. 
-                    Excludes officer-initiated (ONVIEW) and backup-only calls.
+                    Showing official SPD response times for dispatch calls only. Response time is measured from call receipt to first unit arrival on scene. 
+                    Click the + button next to each priority level to see officer-initiated (ONVIEW) calls.
                 </p>
                 <table>
                     <tr>
@@ -304,32 +482,179 @@
                     </tr>`;
             
             sortedPriorities.forEach(priority => {
+                console.log(`Rendering priority ${priority}`);
                 html += `
                     <tr class="priority-${priority}">
-                        <td><strong>Priority ${priority}</strong></td>
+                        <td>
+                            <strong>Priority ${priority}</strong>
+                            <button id="toggle-${priority}" class="expandable-button" onclick="toggleRows('${priority}')">+</button>
+                        </td>
                         ${Object.keys(beatStats).map(beat => {
                             const stats = beatStats[beat].priorities[priority];
-                            if (!stats) return '<td colspan="4">No data</td>';
+                            console.log(`Priority ${priority} stats for beat ${beat}:`, stats);
+                            if (!stats) return '<td colspan="4">No records</td>';
                             return `
-                                <td>${stats.count}</td>
+                                <td>${stats.count.toLocaleString()}</td>
                                 <td>${formatTime(stats.mean)}</td>
                                 <td>${formatTime(stats.median)}</td>
                                 <td>${formatTime(stats.min)} - ${formatTime(stats.max)}</td>
                             `;
                         }).join('')}
                     </tr>`;
+
+                // Add expandable rows for ONVIEW category only
+                html += `
+                    <tr class="expandable-row expandable-row-${priority} onview-row">
+                        <td>ONVIEW</td>
+                        ${Object.keys(beatStats).map(beat => {
+                            const stats = beatStats[beat].specialCategories.ONVIEW[priority];
+                            console.log(`ONVIEW stats for beat ${beat}, priority ${priority}:`, stats);
+                            if (!stats) return '<td colspan="4">No records</td>';
+                            return `
+                                <td>${stats.count.toLocaleString()}</td>
+                                <td>${formatTime(stats.mean)}</td>
+                                <td>${formatTime(stats.median)}</td>
+                                <td>${formatTime(stats.min)} - ${formatTime(stats.max)}</td>
+                            `;
+                        }).join('')}
+                    </tr>`;
+                
+                // Add example call types for ONVIEW
+                const examples = Object.keys(beatStats).map(beat => {
+                    const examples = beatStats[beat].onviewExamples[priority];
+                    if (!examples || examples.size === 0) return '';
+                    // Take up to 4 examples and join with pipes
+                    return [...examples].slice(0, 4).join(' | ');
+                }).filter(x => x).join(' | ');
+
+                if (examples) {
+                    html += `
+                        <tr class="expandable-row expandable-row-${priority} onview-row" style="font-size: 0.85em; color: #666;">
+                            <td colspan="${1 + Object.keys(beatStats).length * 4}">
+                                <em>Examples: ${examples}</em>
+                            </td>
+                        </tr>`;
+                }
             });
             
             html += `
                     <tr>
                         <td><strong>Total Calls</strong></td>
                         ${Object.keys(beatStats).map(beat => `
-                            <td colspan="4">${beatStats[beat].totalCalls}</td>
+                            <td colspan="4">${beatStats[beat].totalCalls.toLocaleString()}</td>
                         `).join('')}
                     </tr>
                 </table>`;
             
             resultsDiv.innerHTML = html;
+        }
+
+        function openMapSelector() {
+            const modal = document.getElementById('mapModal');
+            modal.style.display = 'block';
+            initMap();
+            
+            // Initialize selected beats from input
+            const currentBeats = document.getElementById('dispatchBeat').value
+                .split(',')
+                .map(b => b.trim())
+                .filter(b => b);
+                
+            selectedBeats = new Set(currentBeats);
+            
+            // Update map selections
+            Object.entries(beatLayers).forEach(([beat, layer]) => {
+                if (selectedBeats.has(beat)) {
+                    layer.setStyle({ fillColor: '#00ff00', fillOpacity: 0.4 });
+                } else {
+                    layer.setStyle({ fillColor: '#3388ff', fillOpacity: 0.2 });
+                }
+            });
+        }
+
+        function closeMapSelector() {
+            const modal = document.getElementById('mapModal');
+            modal.style.display = 'none';
+        }
+
+        function toggleBeatSelection(beat, polygon) {
+            if (selectedBeats.has(beat)) {
+                selectedBeats.delete(beat);
+                polygon.setStyle({ fillColor: '#3388ff', fillOpacity: 0.2 });
+            } else {
+                selectedBeats.add(beat);
+                polygon.setStyle({ fillColor: '#00ff00', fillOpacity: 0.4 });
+            }
+        }
+
+        function applyBeatSelection() {
+            const dispatchBeatInput = document.getElementById('dispatchBeat');
+            dispatchBeatInput.value = Array.from(selectedBeats).sort().join(', ');
+            closeMapSelector();
+        }
+
+        async function initMap() {
+            if (!map) {
+                map = L.map('map').setView([47.6062, -122.3321], 11);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+
+                try {
+                    const response = await fetch('beatmap.geojson');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (!data.features) {
+                        throw new Error('Invalid GeoJSON format');
+                    }
+
+                    data.features.forEach(feature => {
+                        if (feature.geometry && feature.properties && feature.properties.beat) {
+                            try {
+                                const latLngs = feature.geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
+                                
+                                const polygon = L.polygon(latLngs, {
+                                    color: '#3388ff',
+                                    weight: 2,
+                                    fillOpacity: 0.2
+                                }).addTo(map);
+
+                                polygon.on('click', () => toggleBeatSelection(feature.properties.beat, polygon));
+                                beatLayers[feature.properties.beat] = polygon;
+                                
+                                // Add beat label
+                                const center = polygon.getBounds().getCenter();
+                                L.marker(center, {
+                                    icon: L.divIcon({
+                                        className: 'beat-label',
+                                        html: `<div style="background-color: white; padding: 2px; border-radius: 2px;">${feature.properties.beat}</div>`
+                                    })
+                                }).addTo(map);
+                            } catch (e) {
+                                console.warn(`Error processing beat ${feature.properties.beat}:`, e);
+                            }
+                        }
+                    });
+
+                    if (Object.keys(beatLayers).length === 0) {
+                        throw new Error('No valid beats were loaded');
+                    }
+
+                } catch (error) {
+                    console.error('Error loading beat data:', error);
+                    const mapDiv = document.getElementById('map');
+                    mapDiv.innerHTML = `
+                        <div style="text-align: center; padding: 20px; color: #ff0000;">
+                            <p>Error loading beat boundaries. Please try again later.</p>
+                            <p>Error details: ${error.message}</p>
+                        </div>
+                    `;
+                }
+            }
         }
     </script>
 </body>
