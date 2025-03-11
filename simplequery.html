@@ -173,6 +173,16 @@
     <div id="query-display" class="query-info"></div>
     <div id="results"></div>
 
+    <!-- Add diagnostic section -->
+    <div id="map-debug" style="margin-top: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; display: none;">
+        <h3>Map Diagnostic Information</h3>
+        <div id="map-debug-content"></div>
+        <div style="margin-top: 10px;">
+            <button onclick="toggleMapDebug()">Toggle Map Debug</button>
+            <button onclick="testMapWithoutModal()">Test Map Directly</button>
+        </div>
+    </div>
+
     <!-- Add Map Modal -->
     <div id="mapModal" class="modal">
         <div class="modal-content">
@@ -550,8 +560,14 @@
         }
 
         function openMapSelector() {
+            console.log("Opening map selector modal");
             const modal = document.getElementById('mapModal');
+            if (!modal) {
+                console.error("Map modal element not found!");
+                return;
+            }
             modal.style.display = 'block';
+            console.log("Calling initMap()");
             initMap();
             
             // Initialize selected beats from input
@@ -560,9 +576,11 @@
                 .map(b => b.trim())
                 .filter(b => b);
                 
+            console.log("Current beats from input:", currentBeats);
             selectedBeats = new Set(currentBeats);
             
             // Update map selections
+            console.log("Updating map selections, available layers:", Object.keys(beatLayers));
             Object.entries(beatLayers).forEach(([beat, layer]) => {
                 if (selectedBeats.has(beat)) {
                     layer.setStyle({ fillColor: '#00ff00', fillOpacity: 0.4 });
@@ -594,28 +612,113 @@
         }
 
         async function initMap() {
+            console.log("initMap called, map object exists:", !!map);
             if (!map) {
+                console.log("Creating new map instance");
+                
+                const mapContainer = document.getElementById('map');
+                if (!mapContainer) {
+                    console.error("Map container element not found!");
+                    return;
+                }
+                
+                console.log("Map container dimensions:", mapContainer.offsetWidth, "x", mapContainer.offsetHeight);
                 map = L.map('map').setView([47.6062, -122.3321], 11);
+                console.log("Map object created:", map);
+                
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap contributors'
                 }).addTo(map);
+                console.log("Base tile layer added to map");
 
                 try {
-                    const response = await fetch('beatmap.geojson');
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                    console.log("Attempting to fetch GeoJSON from:", 'beatmap.geojson');
+                    let data;
+                    
+                    try {
+                        const response = await fetch('beatmap.geojson');
+                        console.log("Fetch response received:", response);
+                        
+                        if (!response.ok) {
+                            console.error("Fetch error:", response.status, response.statusText);
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        
+                        console.log("Parsing GeoJSON data");
+                        data = await response.json();
+                    } catch (fetchError) {
+                        console.error("Failed to fetch GeoJSON:", fetchError);
+                        console.log("Trying embedded minimal GeoJSON as fallback");
+                        
+                        // Minimal GeoJSON with just one SPD beat
+                        data = {
+                            "type": "FeatureCollection",
+                            "features": [
+                                {
+                                    "type": "Feature",
+                                    "properties": {
+                                        "beat": "B1"
+                                    },
+                                    "geometry": {
+                                        "type": "Polygon",
+                                        "coordinates": [
+                                            [
+                                                [-122.33, 47.62],
+                                                [-122.33, 47.63],
+                                                [-122.32, 47.63],
+                                                [-122.32, 47.62],
+                                                [-122.33, 47.62]
+                                            ]
+                                        ]
+                                    }
+                                },
+                                {
+                                    "type": "Feature",
+                                    "properties": {
+                                        "beat": "B2"
+                                    },
+                                    "geometry": {
+                                        "type": "Polygon",
+                                        "coordinates": [
+                                            [
+                                                [-122.35, 47.64],
+                                                [-122.35, 47.65],
+                                                [-122.34, 47.65],
+                                                [-122.34, 47.64],
+                                                [-122.35, 47.64]
+                                            ]
+                                        ]
+                                    }
+                                }
+                            ]
+                        };
                     }
                     
-                    const data = await response.json();
+                    console.log("GeoJSON data available, features:", data.features ? data.features.length : 'none');
                     
                     if (!data.features) {
-                        throw new Error('Invalid GeoJSON format');
+                        console.error("No features found in GeoJSON data");
+                        throw new Error('Invalid GeoJSON format or no features found');
                     }
 
-                    data.features.forEach(feature => {
+                    let featuresProcessed = 0;
+                    let featuresAdded = 0;
+                    
+                    data.features.forEach((feature, index) => {
+                        console.log(`Processing feature ${index + 1}/${data.features.length}`);
                         if (feature.geometry && feature.properties && feature.properties.beat) {
+                            featuresProcessed++;
                             try {
-                                const latLngs = feature.geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
+                                const coordinates = feature.geometry.coordinates;
+                                console.log(`Feature ${index + 1} has coordinates array:`, coordinates ? coordinates.length : 'none');
+                                
+                                if (!coordinates || !coordinates[0] || !Array.isArray(coordinates[0])) {
+                                    console.error(`Invalid coordinates for beat ${feature.properties.beat}`);
+                                    return;
+                                }
+                                
+                                const latLngs = coordinates[0].map(coord => [coord[1], coord[0]]);
+                                console.log(`Mapped ${latLngs.length} coordinate pairs for beat ${feature.properties.beat}`);
                                 
                                 const polygon = L.polygon(latLngs, {
                                     color: '#3388ff',
@@ -625,6 +728,7 @@
 
                                 polygon.on('click', () => toggleBeatSelection(feature.properties.beat, polygon));
                                 beatLayers[feature.properties.beat] = polygon;
+                                featuresAdded++;
                                 
                                 // Add beat label
                                 const center = polygon.getBounds().getCenter();
@@ -634,13 +738,24 @@
                                         html: `<div style="background-color: white; padding: 2px; border-radius: 2px;">${feature.properties.beat}</div>`
                                     })
                                 }).addTo(map);
+                                
+                                console.log(`Successfully added beat ${feature.properties.beat} to map`);
                             } catch (e) {
-                                console.warn(`Error processing beat ${feature.properties.beat}:`, e);
+                                console.error(`Error processing beat ${feature.properties.beat}:`, e);
                             }
+                        } else {
+                            console.warn(`Feature ${index + 1} missing required properties:`, 
+                                         !feature.geometry ? 'No geometry' : 
+                                         !feature.properties ? 'No properties' : 
+                                         !feature.properties.beat ? 'No beat property' : 'Unknown issue');
                         }
                     });
 
+                    console.log(`Processed ${featuresProcessed} features, added ${featuresAdded} to map`);
+                    console.log(`Beat layers created:`, Object.keys(beatLayers));
+
                     if (Object.keys(beatLayers).length === 0) {
+                        console.error("No beat layers created from GeoJSON");
                         throw new Error('No valid beats were loaded');
                     }
 
@@ -651,11 +766,174 @@
                         <div style="text-align: center; padding: 20px; color: #ff0000;">
                             <p>Error loading beat boundaries. Please try again later.</p>
                             <p>Error details: ${error.message}</p>
+                            <p>Check your browser's console for more information.</p>
                         </div>
                     `;
                 }
+            } else {
+                console.log("Using existing map instance");
+                // Force map to update its size in case container changed
+                map.invalidateSize();
             }
         }
+
+        // Add this function after initMap
+        function loadFallbackMap() {
+            console.log("Loading fallback map with sample data");
+            if (!map) {
+                console.error("Map not initialized, cannot load fallback");
+                return;
+            }
+            
+            // Clear any error message
+            const mapDiv = document.getElementById('map');
+            mapDiv.innerHTML = '';
+            
+            // Sample beat data for testing
+            const sampleBeats = [
+                {
+                    name: "B1",
+                    coordinates: [
+                        [
+                            [47.62, -122.33],
+                            [47.63, -122.33],
+                            [47.63, -122.32],
+                            [47.62, -122.32],
+                            [47.62, -122.33]
+                        ]
+                    ]
+                },
+                {
+                    name: "B2",
+                    coordinates: [
+                        [
+                            [47.64, -122.35],
+                            [47.65, -122.35],
+                            [47.65, -122.34],
+                            [47.64, -122.34],
+                            [47.64, -122.35]
+                        ]
+                    ]
+                }
+            ];
+            
+            // Add sample beats to map
+            sampleBeats.forEach(beat => {
+                try {
+                    console.log(`Adding sample beat ${beat.name}`);
+                    
+                    // Note: The sample coordinates are already in [lat, lng] format
+                    const polygon = L.polygon(beat.coordinates[0], {
+                        color: '#3388ff',
+                        weight: 2,
+                        fillOpacity: 0.2
+                    }).addTo(map);
+                    
+                    polygon.on('click', () => toggleBeatSelection(beat.name, polygon));
+                    beatLayers[beat.name] = polygon;
+                    
+                    // Add beat label at center
+                    const bounds = polygon.getBounds();
+                    const center = bounds.getCenter();
+                    
+                    L.marker(center, {
+                        icon: L.divIcon({
+                            className: 'beat-label',
+                            html: `<div style="background-color: white; padding: 2px; border-radius: 2px;">${beat.name}</div>`
+                        })
+                    }).addTo(map);
+                    
+                    console.log(`Successfully added sample beat ${beat.name}`);
+                } catch (e) {
+                    console.error(`Error adding sample beat ${beat.name}:`, e);
+                }
+            });
+            
+            console.log("Fallback map loaded with sample beats:", Object.keys(beatLayers));
+        }
+
+        // Add a fallback button to the map modal
+        document.addEventListener('DOMContentLoaded', function() {
+            const modalContent = document.querySelector('.modal-content');
+            if (modalContent) {
+                const fallbackButton = document.createElement('button');
+                fallbackButton.textContent = 'Try Fallback Map';
+                fallbackButton.style.marginTop = '10px';
+                fallbackButton.onclick = loadFallbackMap;
+                
+                const buttonContainer = document.createElement('div');
+                buttonContainer.style.textAlign = 'center';
+                buttonContainer.appendChild(fallbackButton);
+                
+                modalContent.appendChild(buttonContainer);
+                console.log("Added fallback button to map modal");
+            }
+        });
+
+        // Make sure Leaflet is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("DOM loaded, Leaflet available:", !!window.L);
+        });
+
+        // Add these functions at the end of the script
+        function toggleMapDebug() {
+            const debugSection = document.getElementById('map-debug');
+            const isHidden = debugSection.style.display === 'none';
+            debugSection.style.display = isHidden ? 'block' : 'none';
+            
+            if (isHidden) {
+                updateMapDebug();
+            }
+        }
+        
+        function updateMapDebug() {
+            const debugContent = document.getElementById('map-debug-content');
+            if (!debugContent) return;
+            
+            const beatKeys = Object.keys(beatLayers);
+            const mapExists = !!map;
+            
+            let html = `
+                <p><strong>Map initialized:</strong> ${mapExists}</p>
+                <p><strong>Beat layers loaded:</strong> ${beatKeys.length}</p>
+                <p><strong>Beat IDs:</strong> ${beatKeys.join(', ') || 'None'}</p>
+                <p><strong>Leaflet loaded:</strong> ${!!window.L}</p>
+                <p><strong>Selected beats:</strong> ${Array.from(selectedBeats).join(', ') || 'None'}</p>
+            `;
+            
+            debugContent.innerHTML = html;
+        }
+        
+        function testMapWithoutModal() {
+            const debugContent = document.getElementById('map-debug-content');
+            if (!debugContent) return;
+            
+            // Create a map container directly in the debug section
+            debugContent.innerHTML = '<div id="test-map" style="height: 400px; width: 100%; margin: 10px 0;"></div>';
+            
+            try {
+                // Initialize a test map
+                const testMap = L.map('test-map').setView([47.6062, -122.3321], 11);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(testMap);
+                
+                // Add a simple marker
+                L.marker([47.6062, -122.3321]).addTo(testMap)
+                    .bindPopup('Seattle')
+                    .openPopup();
+                    
+                debugContent.innerHTML += '<p style="color: green">Test map created successfully!</p>';
+            } catch (error) {
+                debugContent.innerHTML += `<p style="color: red">Error creating test map: ${error.message}</p>`;
+            }
+        }
+        
+        // Show debug toggle on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('map-debug').style.display = 'block';
+            updateMapDebug();
+        });
     </script>
 </body>
 </html>
