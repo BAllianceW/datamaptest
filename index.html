@@ -8,8 +8,21 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="normalize.css">
-    <a href="simplequery.html">Seattle Dispatch Response Time Lookup</a>
     <style>
+        /* Flex container for filters and button */
+        .top-bar {
+            display: flex;
+            justify-content: space-between; /* Left-align filters, right-align button */
+            align-items: center;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #000000;
+        }
+        /* Filters container */
+        .filters {
+            display: flex;
+            gap: 10px; /* Adds spacing between filter inputs */
+        }
         #map-container {
             display: flex;
             width: 100%;
@@ -44,23 +57,70 @@
         .sidebar-el:hover {
             background: #e9ecef;
         }
+        /* Make the link look like a button */
+        .custom-button {
+            display: inline-block;
+            padding: 12px 20px;
+            margin: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            text-decoration: none;
+            color: white;
+            background-color: #007bff; /* Blue color */
+            border-radius: 8px;
+            border: 2px solid #0056b3;
+            transition: all 0.3s ease-in-out;
+        }
+        .custom-button:hover {
+            background-color: #0056b3;
+            border-color: #004494;
+        }
+
+        .custom-button:active {
+            background-color: #003366;
+            border-color: #002244;
+        }
+
+        /* Center the button */
+        .button-container {
+            text-align: right;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
-
-    <label for="yearSelect">Select Year:</label>
-    <select id="yearSelect">
-        </select>
-
-    <div id="sliderContainer">
-        <label for="startDateSlider">Start Date:</label>
-        <input type="range" id="startDateSlider" min="0" max="100" value="0">
-        <span id="startDateLabel"></span>
-
-        <label for="endDateSlider">End Date:</label>
-        <input type="range" id="endDateSlider" min="0" max="100" value="100">
-        <span id="endDateLabel"></span>
-        <button id="fitDataButton">Show All Points</button>
+    <div class="top-bar">
+        <div class="filters">
+            <!-- Existing filters -->
+            <label for="startDate">Start Date:</label>
+            <input type="date" id="startDate">
+            <label for="endDate">End Date:</label>
+            <input type="date" id="endDate">
+            <label for="dispatchBeat">Dispatch Beats:</label>
+            <input type="text" id="dispatchBeat" placeholder="e.g., B1, C2">
+    
+            <!-- New Year Selector -->
+            <label for="yearSelect">Select Year:</label>
+            <select id="yearSelect"></select>
+    
+            <!-- Sliders inside the filters container -->
+            <div id="sliderContainer">
+                <label for="startDateSlider">Start Date:</label>
+                <input type="range" id="startDateSlider" min="0" max="100" value="0">
+                <span id="startDateLabel"></span>
+    
+                <label for="endDateSlider">End Date:</label>
+                <input type="range" id="endDateSlider" min="0" max="100" value="100">
+                <span id="endDateLabel"></span>
+            </div>
+    
+            <!-- Button stays inside filters, but to the right -->
+            <button id="fitDataButton">Show All Points</button>
+        </div>
+    
+        <!-- Lookup button stays right-aligned -->
+        <a href="simplequery.html" class="custom-button">Response Time Lookup</a>
     </div>
 
     <h1>Public Data Map</h1>
