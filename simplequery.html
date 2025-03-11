@@ -173,16 +173,6 @@
     <div id="query-display" class="query-info"></div>
     <div id="results"></div>
 
-    <!-- Add diagnostic section -->
-    <div id="map-debug" style="margin-top: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; display: none;">
-        <h3>Map Diagnostic Information</h3>
-        <div id="map-debug-content"></div>
-        <div style="margin-top: 10px;">
-            <button onclick="toggleMapDebug()">Toggle Map Debug</button>
-            <button onclick="testMapWithoutModal()">Test Map Directly</button>
-        </div>
-    </div>
-
     <!-- Add Map Modal -->
     <div id="mapModal" class="modal">
         <div class="modal-content">
@@ -694,11 +684,34 @@
                         };
                     }
                     
-                    console.log("GeoJSON data available, features:", data.features ? data.features.length : 'none');
+                    console.log("GeoJSON parsed successfully, features:", data.features ? data.features.length : 'none');
                     
                     if (!data.features) {
                         console.error("No features found in GeoJSON data");
                         throw new Error('Invalid GeoJSON format or no features found');
+                    }
+
+                    // Analyze the structure of the first feature to help debugging
+                    if (data.features.length > 0) {
+                        const sample = data.features[0];
+                        console.log("GEOJSON STRUCTURE ANALYSIS:");
+                        console.log("Feature type:", sample.geometry.type);
+                        console.log("Properties:", sample.properties);
+                        console.log("First coordinate level:", Array.isArray(sample.geometry.coordinates) ? sample.geometry.coordinates.length : 'not array');
+                        
+                        if (Array.isArray(sample.geometry.coordinates) && sample.geometry.coordinates.length > 0) {
+                            console.log("Second coordinate level:", Array.isArray(sample.geometry.coordinates[0]) ? sample.geometry.coordinates[0].length : 'not array');
+                            
+                            if (Array.isArray(sample.geometry.coordinates[0]) && sample.geometry.coordinates[0].length > 0) {
+                                if (Array.isArray(sample.geometry.coordinates[0][0])) {
+                                    console.log("Third coordinate level:", sample.geometry.coordinates[0][0].length);
+                                    console.log("First 3 coordinates:", JSON.stringify(sample.geometry.coordinates[0].slice(0, 3)));
+                                } else {
+                                    console.log("Third coordinate level: not an array");
+                                    console.log("First element of second level:", JSON.stringify(sample.geometry.coordinates[0]));
+                                }
+                            }
+                        }
                     }
 
                     let featuresProcessed = 0;
@@ -717,7 +730,52 @@
                                     return;
                                 }
                                 
-                                const latLngs = coordinates[0].map(coord => [coord[1], coord[0]]);
+                                // Check coordinates structure and format appropriately
+                                let latLngs;
+                                if (coordinates[0] && Array.isArray(coordinates[0]) && coordinates[0].length > 0) {
+                                    // Check if this is a deeply nested array (MultiPolygon) or a simple Polygon
+                                    if (coordinates[0][0] && Array.isArray(coordinates[0][0]) && coordinates[0][0].length === 2) {
+                                        // Normal polygon format
+                                        latLngs = coordinates[0].map(coord => [coord[1], coord[0]]);
+                                    } else if (coordinates[0] && Array.isArray(coordinates[0]) && coordinates[0].length === 2) {
+                                        // Appears to be a single coordinate or differently formatted
+                                        console.warn(`Beat ${feature.properties.beat} has unusual coordinate structure. Attempting to fix...`);
+                                        
+                                        // If we're dealing with the whole geometry
+                                        if (feature.geometry.type === "MultiPolygon") {
+                                            // For MultiPolygon, take the first polygon's coordinates
+                                            latLngs = coordinates[0][0].map(coord => [coord[1], coord[0]]);
+                                        } else {
+                                            // Try to extract the full coordinates array
+                                            latLngs = [];
+                                            // Log the complete coordinates structure for debugging
+                                            console.log(`Complete coordinates for beat ${feature.properties.beat}:`, JSON.stringify(coordinates));
+                                            
+                                            // Try to flatten and extract coordinates
+                                            const extractCoordinates = (coords, result = []) => {
+                                                if (Array.isArray(coords)) {
+                                                    if (coords.length === 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+                                                        // This is a single [lng, lat] coordinate
+                                                        result.push([coords[1], coords[0]]);
+                                                    } else {
+                                                        // Recurse into nested arrays
+                                                        coords.forEach(coord => extractCoordinates(coord, result));
+                                                    }
+                                                }
+                                                return result;
+                                            };
+                                            
+                                            latLngs = extractCoordinates(coordinates);
+                                            console.log(`Extracted ${latLngs.length} coordinates for beat ${feature.properties.beat}`);
+                                        }
+                                    }
+                                }
+                                
+                                if (!latLngs || latLngs.length < 3) {
+                                    console.error(`Not enough coordinates for beat ${feature.properties.beat}. Need at least 3 for a polygon.`);
+                                    return;
+                                }
+                                
                                 console.log(`Mapped ${latLngs.length} coordinate pairs for beat ${feature.properties.beat}`);
                                 
                                 const polygon = L.polygon(latLngs, {
@@ -903,37 +961,6 @@
             
             debugContent.innerHTML = html;
         }
-        
-        function testMapWithoutModal() {
-            const debugContent = document.getElementById('map-debug-content');
-            if (!debugContent) return;
-            
-            // Create a map container directly in the debug section
-            debugContent.innerHTML = '<div id="test-map" style="height: 400px; width: 100%; margin: 10px 0;"></div>';
-            
-            try {
-                // Initialize a test map
-                const testMap = L.map('test-map').setView([47.6062, -122.3321], 11);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors'
-                }).addTo(testMap);
-                
-                // Add a simple marker
-                L.marker([47.6062, -122.3321]).addTo(testMap)
-                    .bindPopup('Seattle')
-                    .openPopup();
-                    
-                debugContent.innerHTML += '<p style="color: green">Test map created successfully!</p>';
-            } catch (error) {
-                debugContent.innerHTML += `<p style="color: red">Error creating test map: ${error.message}</p>`;
-            }
-        }
-        
-        // Show debug toggle on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('map-debug').style.display = 'block';
-            updateMapDebug();
-        });
     </script>
 </body>
 </html>
