@@ -165,7 +165,7 @@
         <input type="date" id="endDate">
         <label for="dispatchBeat">Dispatch Beats (comma-separated):</label>
         <input type="text" id="dispatchBeat" placeholder="e.g., B1, C2">
-        <button class="map-button" onclick="openMapSelector()">Select from Map</button>
+        <button class="map-button" onclick="openMapSelector()">Select Dispatch Beat(s)<br>from Map</button>
         <button onclick="fetchData()">Get Response Times</button>
         <button class="show-query-btn" onclick="toggleQuery()">Show API Query</button>
     </div>
@@ -340,6 +340,16 @@
                                 if (responseTimeSeconds > 0 && responseTimeSeconds < 86400) {
                                     debugCounts.validTimes++;
                                     
+                                    // Debug logging for Priority 7 calls
+                                    if (d.priority === '7') {
+                                        console.log('Priority 7 call:', {
+                                            call_type_indicator: d.call_type_indicator,
+                                            initial_call_type: d.initial_call_type,
+                                            final_call_type: d.final_call_type,
+                                            responseTime: responseTimeSeconds
+                                        });
+                                    }
+                                    
                                     // Use call_type_indicator to categorize
                                     if (d.call_type_indicator === 'ONVIEW') {
                                         debugCounts.byType.ONVIEW++;
@@ -351,13 +361,17 @@
                                         if (d.final_call_type) {
                                             beatStats[beat].onviewExamples[d.priority].add(d.final_call_type);
                                         }
-                                    } else if (d.call_type_indicator === 'DISPATCH') {
+                                    }
+                                    if (d.call_type_indicator === 'DISPATCH') {
                                         debugCounts.byType.DISPATCH++;
                                         if (!beatStats[beat].priorities[d.priority]) {
                                             beatStats[beat].priorities[d.priority] = [];
                                         }
                                         beatStats[beat].priorities[d.priority].push(responseTimeSeconds);
                                         beatStats[beat].totalCalls++; // Only count dispatched calls in total
+                                    } else {
+                                        // Debug unknown call types
+                                        console.log('Unknown call type indicator:', d.call_type_indicator, 'for priority:', d.priority);
                                     }
                                 }
                             }
