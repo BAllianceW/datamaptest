@@ -465,12 +465,6 @@
         function displayResults(beatStats) {
             console.log('Displaying results for beats:', Object.keys(beatStats));
             const resultsDiv = document.getElementById("results");
-            const allPriorities = new Set();
-            Object.values(beatStats).forEach(beat => {
-                Object.keys(beat.priorities).forEach(priority => allPriorities.add(priority));
-            });
-            const sortedPriorities = [...allPriorities].sort((a, b) => Number(a) - Number(b));
-            
             let html = `
                 <h3>Results (Dispatch Calls)</h3>
                 <p style="color: #666; font-style: italic; margin-bottom: 20px;">
@@ -480,26 +474,27 @@
                 <table>
                     <tr>
                         <th>Priority</th>
-                        <th colspan="4">B1</th>
-                        <th colspan="4">U2</th>
-                        <th colspan="4">L1</th>
+                        ${Object.keys(beatStats).map(beat => `<th colspan="4">${beat}</th>`).join('')}
                     </tr>
                     <tr>
                         <th></th>
-                        <th>Count</th>
-                        <th>Mean</th>
-                        <th>Median</th>
-                        <th>Range</th>
-                        <th>Count</th>
-                        <th>Mean</th>
-                        <th>Median</th>
-                        <th>Range</th>
-                        <th>Count</th>
-                        <th>Mean</th>
-                        <th>Median</th>
-                        <th>Range</th>
+                        ${Object.keys(beatStats).map(() => `
+                            <th>Count</th>
+                            <th>Mean</th>
+                            <th>Median</th>
+                            <th>Range</th>
+                        `).join('')}
                     </tr>`;
             
+            // Sort priorities to include all priorities including 7
+            const allPriorities = new Set();
+            Object.values(beatStats).forEach(beat => {
+                Object.keys(beat.priorities).forEach(priority => allPriorities.add(priority));
+                // Also check ONVIEW priorities
+                Object.keys(beat.specialCategories.ONVIEW).forEach(priority => allPriorities.add(priority));
+            });
+            const sortedPriorities = [...allPriorities].sort((a, b) => Number(a) - Number(b));
+
             sortedPriorities.forEach(priority => {
                 console.log(`Rendering priority ${priority}`);
                 html += `
@@ -510,7 +505,6 @@
                         </td>
                         ${Object.keys(beatStats).map(beat => {
                             const stats = beatStats[beat].priorities[priority];
-                            console.log(`Priority ${priority} stats for beat ${beat}:`, stats);
                             if (!stats) return '<td colspan="4">No records</td>';
                             return `
                                 <td>${stats.count.toLocaleString()}</td>
@@ -521,35 +515,47 @@
                         }).join('')}
                     </tr>`;
 
-                // Add expandable rows for ONVIEW category only
-                html += `
-                    <tr class="expandable-row expandable-row-${priority} onview-row">
-                        <td>ONVIEW</td>
-                        ${Object.keys(beatStats).map(beat => {
-                            const stats = beatStats[beat].specialCategories.ONVIEW[priority];
-                            console.log(`ONVIEW stats for beat ${beat}, priority ${priority}:`, stats);
-                            if (!stats) return '<td colspan="4">No records</td>';
-                            return `
-                                <td>${stats.count.toLocaleString()}</td>
-                                <td>${formatTime(stats.mean)}</td>
-                                <td>${formatTime(stats.median)}</td>
-                                <td>${formatTime(stats.min)} - ${formatTime(stats.max)}</td>
-                            `;
-                        }).join('')}
-                    </tr>`;
-                
-                // Add example call types for ONVIEW, split by beat
-                Object.keys(beatStats).forEach(beat => {
-                    const examples = beatStats[beat].onviewExamples[priority];
-                    if (examples && examples.size > 0) {
+                // Add expandable rows for ONVIEW category
+                const hasOnviewData = Object.values(beatStats).some(beat => 
+                    beat.specialCategories.ONVIEW[priority] && 
+                    beat.specialCategories.ONVIEW[priority].count > 0
+                );
+
+                if (hasOnviewData) {
+                    html += `
+                        <tr class="expandable-row expandable-row-${priority} onview-row" style="display: none;">
+                            <td>ONVIEW</td>
+                            ${Object.keys(beatStats).map(beat => {
+                                const stats = beatStats[beat].specialCategories.ONVIEW[priority];
+                                if (!stats || stats.count === 0) return '<td colspan="4">No records</td>';
+                                return `
+                                    <td>${stats.count.toLocaleString()}</td>
+                                    <td>${formatTime(stats.mean)}</td>
+                                    <td>${formatTime(stats.median)}</td>
+                                    <td>${formatTime(stats.min)} - ${formatTime(stats.max)}</td>
+                                `;
+                            }).join('')}
+                        </tr>`;
+
+                    // Add example call types if available
+                    const hasExamples = Object.values(beatStats).some(beat => 
+                        beat.onviewExamples[priority] && 
+                        beat.onviewExamples[priority].size > 0
+                    );
+
+                    if (hasExamples) {
                         html += `
-                            <tr class="expandable-row expandable-row-${priority} onview-row" style="font-size: 0.85em; color: #666;">
-                                <td colspan="${1 + Object.keys(beatStats).length * 4}">
-                                    <em>${beat} Examples: ${[...examples].slice(0, 4).join(' | ')}</em>
+                            <tr class="expandable-row expandable-row-${priority} onview-row" style="display: none;">
+                                <td colspan="${1 + Object.keys(beatStats).length * 4}" style="font-size: 0.85em; color: #666;">
+                                    <em>Examples: ${Object.entries(beatStats)
+                                        .filter(([_, beat]) => beat.onviewExamples[priority] && beat.onviewExamples[priority].size > 0)
+                                        .map(([beat, data]) => `${beat}: ${[...data.onviewExamples[priority]].slice(0, 4).join(' | ')}`)
+                                        .join(' | ')}
+                                    </em>
                                 </td>
                             </tr>`;
                     }
-                });
+                }
             });
             
             html += `
