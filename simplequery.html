@@ -733,50 +733,42 @@
                                 // Check coordinates structure and format appropriately
                                 let latLngs;
                                 if (coordinates[0] && Array.isArray(coordinates[0]) && coordinates[0].length > 0) {
-                                    // Check if this is a deeply nested array (MultiPolygon) or a simple Polygon
-                                    if (coordinates[0][0] && Array.isArray(coordinates[0][0]) && coordinates[0][0].length === 2) {
+                                    if (feature.geometry.type === "MultiPolygon") {
+                                        // Handle MultiPolygon by processing all polygon rings
+                                        latLngs = coordinates.map(polygon => 
+                                            polygon[0].map(coord => [coord[1], coord[0]])
+                                        );
+                                    } else if (coordinates[0][0] && Array.isArray(coordinates[0][0]) && coordinates[0][0].length === 2) {
                                         // Normal polygon format
-                                        latLngs = coordinates[0].map(coord => [coord[1], coord[0]]);
+                                        latLngs = [coordinates[0].map(coord => [coord[1], coord[0]])];
                                     } else if (coordinates[0] && Array.isArray(coordinates[0]) && coordinates[0].length === 2) {
-                                        // Appears to be a single coordinate or differently formatted
+                                        // Single coordinate pair format
                                         console.warn(`Beat ${feature.properties.beat} has unusual coordinate structure. Attempting to fix...`);
                                         
-                                        // If we're dealing with the whole geometry
-                                        if (feature.geometry.type === "MultiPolygon") {
-                                            // For MultiPolygon, take the first polygon's coordinates
-                                            latLngs = coordinates[0][0].map(coord => [coord[1], coord[0]]);
-                                        } else {
-                                            // Try to extract the full coordinates array
-                                            latLngs = [];
-                                            // Log the complete coordinates structure for debugging
-                                            console.log(`Complete coordinates for beat ${feature.properties.beat}:`, JSON.stringify(coordinates));
-                                            
-                                            // Try to flatten and extract coordinates
-                                            const extractCoordinates = (coords, result = []) => {
-                                                if (Array.isArray(coords)) {
-                                                    if (coords.length === 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
-                                                        // This is a single [lng, lat] coordinate
-                                                        result.push([coords[1], coords[0]]);
-                                                    } else {
-                                                        // Recurse into nested arrays
-                                                        coords.forEach(coord => extractCoordinates(coord, result));
-                                                    }
+                                        // Try to extract the full coordinates array
+                                        const extractCoordinates = (coords, result = []) => {
+                                            if (Array.isArray(coords)) {
+                                                if (coords.length === 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+                                                    // This is a single [lng, lat] coordinate
+                                                    result.push([coords[1], coords[0]]);
+                                                } else {
+                                                    // Recurse into nested arrays
+                                                    coords.forEach(coord => extractCoordinates(coord, result));
                                                 }
-                                                return result;
-                                            };
-                                            
-                                            latLngs = extractCoordinates(coordinates);
-                                            console.log(`Extracted ${latLngs.length} coordinates for beat ${feature.properties.beat}`);
-                                        }
+                                            }
+                                            return result;
+                                        };
+                                        
+                                        latLngs = [extractCoordinates(coordinates)];
                                     }
                                 }
                                 
-                                if (!latLngs || latLngs.length < 3) {
+                                if (!latLngs || !latLngs[0] || latLngs[0].length < 3) {
                                     console.error(`Not enough coordinates for beat ${feature.properties.beat}. Need at least 3 for a polygon.`);
                                     return;
                                 }
                                 
-                                console.log(`Mapped ${latLngs.length} coordinate pairs for beat ${feature.properties.beat}`);
+                                console.log(`Mapped ${latLngs.length} polygon(s) with ${latLngs[0].length} coordinate pairs for beat ${feature.properties.beat}`);
                                 
                                 const polygon = L.polygon(latLngs, {
                                     color: '#3388ff',
