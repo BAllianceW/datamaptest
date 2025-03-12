@@ -45,23 +45,25 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
-            border: 2px solid #000000;  /* Bold outside border */
+            border: 2px solid #000000;
         }
         th, td {
             padding: 10px;
             border: 1px solid #000000;
             text-align: left;
         }
-        /* Add bold borders between beat sections */
-        th:nth-child(4n+1), td:nth-child(4n+1) {
+        /* Bold borders between beat sections */
+        td:nth-child(5), th:nth-child(5),
+        td:nth-child(9), th:nth-child(9) {
             border-left: 2px solid #000000;
         }
-        /* First column should not have bold left border */
-        th:first-child, td:first-child {
-            border-left: 1px solid #000000;
+        /* Bold border after Priority column */
+        td:first-child, th:first-child {
+            border-right: 2px solid #000000;
         }
         th {
             background-color: #f5f5f5;
+            border-bottom: 2px solid #000000;
         }
         tr:nth-child(even) {
             background-color: transparent;
@@ -349,16 +351,6 @@
                                 if (responseTimeSeconds > 0 && responseTimeSeconds < 86400) {
                                     debugCounts.validTimes++;
                                     
-                                    // Debug logging for Priority 7 calls
-                                    if (d.priority === '7') {
-                                        console.log('Priority 7 call:', {
-                                            call_type_indicator: d.call_type_indicator,
-                                            initial_call_type: d.initial_call_type,
-                                            final_call_type: d.final_call_type,
-                                            responseTime: responseTimeSeconds
-                                        });
-                                    }
-                                    
                                     // Use call_type_indicator to categorize
                                     if (d.call_type_indicator === 'ONVIEW') {
                                         debugCounts.byType.ONVIEW++;
@@ -370,17 +362,13 @@
                                         if (d.final_call_type) {
                                             beatStats[beat].onviewExamples[d.priority].add(d.final_call_type);
                                         }
-                                    }
-                                    if (d.call_type_indicator === 'DISPATCH') {
+                                    } else if (d.call_type_indicator === 'DISPATCH') {
                                         debugCounts.byType.DISPATCH++;
                                         if (!beatStats[beat].priorities[d.priority]) {
                                             beatStats[beat].priorities[d.priority] = [];
                                         }
                                         beatStats[beat].priorities[d.priority].push(responseTimeSeconds);
                                         beatStats[beat].totalCalls++; // Only count dispatched calls in total
-                                    } else {
-                                        // Debug unknown call types
-                                        console.log('Unknown call type indicator:', d.call_type_indicator, 'for priority:', d.priority);
                                     }
                                 }
                             }
@@ -492,16 +480,24 @@
                 <table>
                     <tr>
                         <th>Priority</th>
-                        ${Object.keys(beatStats).map(beat => `<th colspan="4">${beat}</th>`).join('')}
+                        <th colspan="4">B1</th>
+                        <th colspan="4">U2</th>
+                        <th colspan="4">L1</th>
                     </tr>
                     <tr>
                         <th></th>
-                        ${Object.keys(beatStats).map(() => `
-                            <th>Count</th>
-                            <th>Mean</th>
-                            <th>Median</th>
-                            <th>Range</th>
-                        `).join('')}
+                        <th>Count</th>
+                        <th>Mean</th>
+                        <th>Median</th>
+                        <th>Range</th>
+                        <th>Count</th>
+                        <th>Mean</th>
+                        <th>Median</th>
+                        <th>Range</th>
+                        <th>Count</th>
+                        <th>Mean</th>
+                        <th>Median</th>
+                        <th>Range</th>
                     </tr>`;
             
             sortedPriorities.forEach(priority => {
