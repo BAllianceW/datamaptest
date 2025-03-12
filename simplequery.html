@@ -533,22 +533,18 @@
                         }).join('')}
                     </tr>`;
                 
-                // Add example call types for ONVIEW
-                const examples = Object.keys(beatStats).map(beat => {
+                // Add example call types for ONVIEW, split by beat
+                Object.keys(beatStats).forEach(beat => {
                     const examples = beatStats[beat].onviewExamples[priority];
-                    if (!examples || examples.size === 0) return '';
-                    // Take up to 4 examples and join with pipes
-                    return [...examples].slice(0, 4).join(' | ');
-                }).filter(x => x).join(' | ');
-
-                if (examples) {
-                    html += `
-                        <tr class="expandable-row expandable-row-${priority} onview-row" style="font-size: 0.85em; color: #666;">
-                            <td colspan="${1 + Object.keys(beatStats).length * 4}">
-                                <em>Examples: ${examples}</em>
-                            </td>
-                        </tr>`;
-                }
+                    if (examples && examples.size > 0) {
+                        html += `
+                            <tr class="expandable-row expandable-row-${priority} onview-row" style="font-size: 0.85em; color: #666;">
+                                <td colspan="${1 + Object.keys(beatStats).length * 4}">
+                                    <em>${beat} Examples: ${[...examples].slice(0, 4).join(' | ')}</em>
+                                </td>
+                            </tr>`;
+                    }
+                });
             });
             
             html += `
