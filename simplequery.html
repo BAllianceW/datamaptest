@@ -451,14 +451,25 @@
         function toggleRows(priority) {
             const rows = document.querySelectorAll(`.expandable-row-${priority}`);
             const button = document.querySelector(`#toggle-${priority}`);
-            const isExpanding = rows[0].style.display === 'none';
             
-            rows.forEach(row => {
-                row.style.display = isExpanding ? 'table-row' : 'none';
-            });
-            
-            if (button) {
-                button.textContent = isExpanding ? '-' : '+';
+            // Only proceed if we found expandable rows
+            if (rows.length > 0) {
+                const isExpanding = rows[0].style.display === 'none';
+                
+                rows.forEach(row => {
+                    row.style.display = isExpanding ? 'table-row' : 'none';
+                });
+                
+                if (button) {
+                    button.textContent = isExpanding ? '-' : '+';
+                }
+            } else {
+                // If no expandable rows found, disable the button
+                if (button) {
+                    button.disabled = true;
+                    button.style.opacity = '0.5';
+                    button.title = 'No ONVIEW data available';
+                }
             }
         }
         
@@ -497,11 +508,21 @@
 
             sortedPriorities.forEach(priority => {
                 console.log(`Rendering priority ${priority}`);
+                
+                // Check for ONVIEW data first
+                const hasOnviewData = Object.values(beatStats).some(beat => 
+                    beat.specialCategories.ONVIEW[priority] && 
+                    beat.specialCategories.ONVIEW[priority].count > 0
+                );
+
+                // Main priority row
                 html += `
                     <tr class="priority-${priority}">
                         <td>
                             <strong>Priority ${priority}</strong>
-                            <button id="toggle-${priority}" class="expandable-button" onclick="toggleRows('${priority}')">+</button>
+                            ${hasOnviewData ? 
+                                `<button id="toggle-${priority}" class="expandable-button" onclick="toggleRows('${priority}')">+</button>` 
+                                : ''}
                         </td>
                         ${Object.keys(beatStats).map(beat => {
                             const stats = beatStats[beat].priorities[priority];
@@ -515,18 +536,13 @@
                         }).join('')}
                     </tr>`;
 
-                // Add expandable rows for ONVIEW category
-                const hasOnviewData = Object.values(beatStats).some(beat => 
-                    beat.specialCategories.ONVIEW[priority] && 
-                    beat.specialCategories.ONVIEW[priority].count > 0
-                );
-
+                // Add ONVIEW rows if there's data
                 if (hasOnviewData) {
                     html += `
                         <tr class="expandable-row expandable-row-${priority} onview-row" style="display: none;">
                             <td>ONVIEW</td>
                             ${Object.keys(beatStats).map(beat => {
-                                const stats = beatStats[beat].specialCategories.ONVIEW[priority];
+                                const stats = beat.specialCategories.ONVIEW[priority];
                                 if (!stats || stats.count === 0) return '<td colspan="4">No records</td>';
                                 return `
                                     <td>${stats.count.toLocaleString()}</td>
@@ -537,21 +553,17 @@
                             }).join('')}
                         </tr>`;
 
-                    // Add example call types if available
-                    const hasExamples = Object.values(beatStats).some(beat => 
-                        beat.onviewExamples[priority] && 
-                        beat.onviewExamples[priority].size > 0
-                    );
+                    // Add example call types
+                    const examples = Object.entries(beatStats)
+                        .filter(([_, beat]) => beat.onviewExamples[priority] && beat.onviewExamples[priority].size > 0)
+                        .map(([beat, data]) => `${beat}: ${[...data.onviewExamples[priority]].slice(0, 4).join(' | ')}`)
+                        .join(' | ');
 
-                    if (hasExamples) {
+                    if (examples) {
                         html += `
                             <tr class="expandable-row expandable-row-${priority} onview-row" style="display: none;">
                                 <td colspan="${1 + Object.keys(beatStats).length * 4}" style="font-size: 0.85em; color: #666;">
-                                    <em>Examples: ${Object.entries(beatStats)
-                                        .filter(([_, beat]) => beat.onviewExamples[priority] && beat.onviewExamples[priority].size > 0)
-                                        .map(([beat, data]) => `${beat}: ${[...data.onviewExamples[priority]].slice(0, 4).join(' | ')}`)
-                                        .join(' | ')}
-                                    </em>
+                                    <em>Examples: ${examples}</em>
                                 </td>
                             </tr>`;
                     }
