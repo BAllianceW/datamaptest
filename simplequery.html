@@ -925,6 +925,8 @@
 
         // Improved data processing function
         function processData(allData, beat) {
+            console.log(`Processing ${allData.length} total records for beat ${beat}`);
+            
             const stats = {
                 totalCalls: 0,
                 priorities: {},
@@ -934,44 +936,109 @@
                 onviewExamples: {}
             };
 
+            // Debug counters
+            let debugStats = {
+                totalRecords: allData.length,
+                noResponseTime: 0,
+                noPriority: 0,
+                invalidResponseTime: 0,
+                validDispatch: 0,
+                validOnview: 0
+            };
+
             // Process all records first
             allData.forEach(d => {
-                if (!d.cad_event_first_response_time_s_ || !d.priority) return;
-                
-                const responseTimeSeconds = Number(d.cad_event_first_response_time_s_);
-                if (responseTimeSeconds <= 0 || responseTimeSeconds >= 86400) return;
-
                 const priority = d.priority;
                 const isOnview = d.call_type_indicator === 'ONVIEW';
                 
+                // Debug logging for first few records
+                if (debugStats.totalRecords < 5) {
+                    console.log('Sample record:', {
+                        priority: d.priority,
+                        call_type_indicator: d.call_type_indicator,
+                        response_time: d.cad_event_first_response_time_s_,
+                        final_call_type: d.final_call_type
+                    });
+                }
+
+                // Count all records by type, regardless of response time
                 if (isOnview) {
                     if (!stats.specialCategories.ONVIEW[priority]) {
-                        stats.specialCategories.ONVIEW[priority] = [];
+                        stats.specialCategories.ONVIEW[priority] = {
+                            totalCalls: 0,
+                            responseTimes: []
+                        };
                         stats.onviewExamples[priority] = new Set();
                     }
-                    stats.specialCategories.ONVIEW[priority].push(responseTimeSeconds);
+                    stats.specialCategories.ONVIEW[priority].totalCalls++;
                     if (d.final_call_type) {
                         stats.onviewExamples[priority].add(d.final_call_type);
                     }
-                } else if (d.call_type_indicator === 'DISPATCH') {
+                } else {
                     if (!stats.priorities[priority]) {
-                        stats.priorities[priority] = [];
+                        stats.priorities[priority] = {
+                            totalCalls: 0,
+                            responseTimes: []
+                        };
                     }
-                    stats.priorities[priority].push(responseTimeSeconds);
+                    stats.priorities[priority].totalCalls++;
                     stats.totalCalls++;
+                }
+
+                // Process response times if available
+                if (!d.cad_event_first_response_time_s_) {
+                    debugStats.noResponseTime++;
+                    return;
+                }
+                if (!priority) {
+                    debugStats.noPriority++;
+                    return;
+                }
+
+                const responseTimeSeconds = Number(d.cad_event_first_response_time_s_);
+                if (responseTimeSeconds <= 0 || responseTimeSeconds >= 86400) {
+                    debugStats.invalidResponseTime++;
+                    return;
+                }
+
+                if (isOnview) {
+                    stats.specialCategories.ONVIEW[priority].responseTimes.push(responseTimeSeconds);
+                    debugStats.validOnview++;
+                } else {
+                    stats.priorities[priority].responseTimes.push(responseTimeSeconds);
+                    debugStats.validDispatch++;
                 }
             });
 
             // Calculate statistics for all categories
             for (const priority in stats.priorities) {
-                stats.priorities[priority] = calculateStats(stats.priorities[priority]);
+                const times = stats.priorities[priority].responseTimes;
+                stats.priorities[priority] = {
+                    count: stats.priorities[priority].totalCalls,
+                    ...(times.length > 0 ? calculateStats(times) : {
+                        mean: null,
+                        median: null,
+                        min: null,
+                        max: null
+                    })
+                };
             }
             
             for (const priority in stats.specialCategories.ONVIEW) {
-                if (stats.specialCategories.ONVIEW[priority].length > 0) {
-                    stats.specialCategories.ONVIEW[priority] = calculateStats(stats.specialCategories.ONVIEW[priority]);
-                }
+                const times = stats.specialCategories.ONVIEW[priority].responseTimes;
+                stats.specialCategories.ONVIEW[priority] = {
+                    count: stats.specialCategories.ONVIEW[priority].totalCalls,
+                    ...(times.length > 0 ? calculateStats(times) : {
+                        mean: null,
+                        median: null,
+                        min: null,
+                        max: null
+                    })
+                };
             }
+
+            console.log(`Debug stats for beat ${beat}:`, debugStats);
+            console.log(`Processed stats for beat ${beat}:`, stats);
 
             return stats;
         }
