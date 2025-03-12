@@ -511,9 +511,18 @@
             html += `
                 <tr>
                     <td><strong>Total Calls</strong></td>
-                    ${beats.map((beat, i) => `
-                        <td colspan="4" class="${i > 0 ? 'beat-section' : ''}">${beatStats[beat].totalCalls.toLocaleString()}</td>
-                    `).join('')}
+                    ${beats.map((beat, i) => {
+                        // Calculate total ONVIEW calls for this beat
+                        const onviewCalls = Object.values(beatStats[beat].specialCategories.ONVIEW)
+                            .reduce((sum, stats) => sum + (stats.count || 0), 0);
+                        
+                        return `<td colspan="4" class="${i > 0 ? 'beat-section' : ''}">
+                            ${beatStats[beat].totalCalls.toLocaleString()}
+                            ${onviewCalls > 0 ? 
+                                `<span style="color: #666; font-style: italic; margin-left: 8px;">+ ${onviewCalls} ONVIEW</span>` 
+                                : ''}
+                        </td>`;
+                    }).join('')}
                 </tr>
                 </table>`;
             
