@@ -89,23 +89,31 @@
         }
         .expandable-button {
             cursor: pointer;
-            padding: 2px 6px;
-            margin-left: 10px;
-            border: 1px solid #ccc;
+            padding: 2px 8px;
+            margin-left: 8px;
+            border: 1px solid #666;
             border-radius: 3px;
-            font-size: 0.8em;
             background-color: #f8f8f8;
+            font-weight: bold;
         }
-        .expandable-row {
-            display: none;
-            background-color: #f8f8f8;
+        .expandable-button:hover {
+            background-color: #e0e0e0;
         }
-        .expandable-row td {
-            padding-left: 30px;
-            font-size: 0.95em;
+        .expandable-button:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
         }
-        .onview-row { 
+        /* Dynamic bold borders */
+        .beat-section {
+            border-left: 2px solid #000000;
+        }
+        .onview-row {
             background-color: #f8f8f8 !important;
+        }
+        .examples-row {
+            font-size: 0.85em;
+            color: #666;
+            font-style: italic;
         }
         .backup-row { background-color: rgba(100, 149, 237, 0.1); }
         .backup-urgent-row { background-color: rgba(255, 140, 0, 0.1); }
@@ -320,89 +328,7 @@
                         // Process data for this beat
                         console.log(`Processing ${allData.length} records for beat ${beat}`);
                         
-                        beatStats[beat] = {
-                            totalCalls: 0,
-                            priorities: {},
-                            specialCategories: {
-                                ONVIEW: {}
-                            },
-                            onviewExamples: {} // Store example call types for each priority
-                        };
-
-                        // Debug counters
-                        let debugCounts = {
-                            total: 0,
-                            withResponseTime: 0,
-                            validTimes: 0,
-                            byType: {
-                                DISPATCH: 0,
-                                ONVIEW: 0
-                            }
-                        };
-
-                        // First, categorize all data by call type and priority
-                        allData.forEach(d => {
-                            debugCounts.total++;
-                            
-                            if (d.cad_event_first_response_time_s_ && d.priority) {
-                                debugCounts.withResponseTime++;
-                                const responseTimeSeconds = Number(d.cad_event_first_response_time_s_);
-                                
-                                if (responseTimeSeconds > 0 && responseTimeSeconds < 86400) {
-                                    debugCounts.validTimes++;
-                                    
-                                    // Use call_type_indicator to categorize
-                                    if (d.call_type_indicator === 'ONVIEW') {
-                                        debugCounts.byType.ONVIEW++;
-                                        if (!beatStats[beat].specialCategories.ONVIEW[d.priority]) {
-                                            beatStats[beat].specialCategories.ONVIEW[d.priority] = [];
-                                            beatStats[beat].onviewExamples[d.priority] = new Set();
-                                        }
-                                        beatStats[beat].specialCategories.ONVIEW[d.priority].push(responseTimeSeconds);
-                                        if (d.final_call_type) {
-                                            beatStats[beat].onviewExamples[d.priority].add(d.final_call_type);
-                                        }
-                                    } else if (d.call_type_indicator === 'DISPATCH') {
-                                        debugCounts.byType.DISPATCH++;
-                                        if (!beatStats[beat].priorities[d.priority]) {
-                                            beatStats[beat].priorities[d.priority] = [];
-                                        }
-                                        beatStats[beat].priorities[d.priority].push(responseTimeSeconds);
-                                        beatStats[beat].totalCalls++; // Only count dispatched calls in total
-                                    }
-                                }
-                            }
-                        });
-
-                        console.log('Debug counts:', debugCounts);
-                        console.log(`Beat ${beat} categories:`, {
-                            dispatch: Object.keys(beatStats[beat].priorities).length > 0 ? 
-                                Object.keys(beatStats[beat].priorities) : 'No dispatch calls',
-                            onview: Object.keys(beatStats[beat].specialCategories.ONVIEW).length > 0 ? 
-                                Object.keys(beatStats[beat].specialCategories.ONVIEW) : 'No onview calls'
-                        });
-
-                        // Calculate statistics for regular calls
-                        for (let priority in beatStats[beat].priorities) {
-                            const times = beatStats[beat].priorities[priority];
-                            if (times.length > 0) {
-                                beatStats[beat].priorities[priority] = calculateStats(times);
-                                console.log(`Priority ${priority} stats:`, beatStats[beat].priorities[priority]);
-                            }
-                        }
-
-                        // Calculate statistics for special categories
-                        for (let category in beatStats[beat].specialCategories) {
-                            console.log(`Processing special category: ${category}`);
-                            for (let priority in beatStats[beat].specialCategories[category]) {
-                                const times = beatStats[beat].specialCategories[category][priority];
-                                if (times && times.length > 0) {
-                                    beatStats[beat].specialCategories[category][priority] = calculateStats(times);
-                                    console.log(`${category} Priority ${priority} stats:`, 
-                                        beatStats[beat].specialCategories[category][priority]);
-                                }
-                            }
-                        }
+                        beatStats[beat] = processData(allData, beat);
 
                         console.log(`Completed processing beat ${beat}`);
                     }
@@ -476,6 +402,16 @@
         function displayResults(beatStats) {
             console.log('Displaying results for beats:', Object.keys(beatStats));
             const resultsDiv = document.getElementById("results");
+            const beats = Object.keys(beatStats);
+            
+            // Get all priorities from both dispatch and ONVIEW
+            const allPriorities = new Set();
+            Object.values(beatStats).forEach(beat => {
+                Object.keys(beat.priorities).forEach(p => allPriorities.add(p));
+                Object.keys(beat.specialCategories.ONVIEW).forEach(p => allPriorities.add(p));
+            });
+            const sortedPriorities = [...allPriorities].sort((a, b) => Number(a) - Number(b));
+
             let html = `
                 <h3>Results (Dispatch Calls)</h3>
                 <p style="color: #666; font-style: italic; margin-bottom: 20px;">
@@ -485,101 +421,101 @@
                 <table>
                     <tr>
                         <th>Priority</th>
-                        ${Object.keys(beatStats).map(beat => `<th colspan="4">${beat}</th>`).join('')}
+                        ${beats.map((beat, i) => 
+                            `<th colspan="4" class="${i > 0 ? 'beat-section' : ''}">${beat}</th>`
+                        ).join('')}
                     </tr>
                     <tr>
                         <th></th>
-                        ${Object.keys(beatStats).map(() => `
-                            <th>Count</th>
+                        ${beats.map((_, i) => `
+                            <th class="${i > 0 ? 'beat-section' : ''}">Count</th>
                             <th>Mean</th>
                             <th>Median</th>
                             <th>Range</th>
                         `).join('')}
                     </tr>`;
-            
-            // Sort priorities to include all priorities including 7
-            const allPriorities = new Set();
-            Object.values(beatStats).forEach(beat => {
-                Object.keys(beat.priorities).forEach(priority => allPriorities.add(priority));
-                // Also check ONVIEW priorities
-                Object.keys(beat.specialCategories.ONVIEW).forEach(priority => allPriorities.add(priority));
-            });
-            const sortedPriorities = [...allPriorities].sort((a, b) => Number(a) - Number(b));
 
+            // Render each priority section
             sortedPriorities.forEach(priority => {
-                console.log(`Rendering priority ${priority}`);
-                
-                // Check for ONVIEW data first
                 const hasOnviewData = Object.values(beatStats).some(beat => 
                     beat.specialCategories.ONVIEW[priority] && 
                     beat.specialCategories.ONVIEW[priority].count > 0
                 );
 
-                // Main priority row
-                html += `
-                    <tr class="priority-${priority}">
-                        <td>
-                            <strong>Priority ${priority}</strong>
-                            ${hasOnviewData ? 
-                                `<button id="toggle-${priority}" class="expandable-button" onclick="toggleRows('${priority}')">+</button>` 
-                                : ''}
-                        </td>
-                        ${Object.keys(beatStats).map(beat => {
-                            const stats = beatStats[beat].priorities[priority];
-                            if (!stats) return '<td colspan="4">No records</td>';
-                            return `
-                                <td>${stats.count.toLocaleString()}</td>
-                                <td>${formatTime(stats.mean)}</td>
-                                <td>${formatTime(stats.median)}</td>
-                                <td>${formatTime(stats.min)} - ${formatTime(stats.max)}</td>
-                            `;
-                        }).join('')}
-                    </tr>`;
-
-                // Add ONVIEW rows if there's data
-                if (hasOnviewData) {
-                    html += `
-                        <tr class="expandable-row expandable-row-${priority} onview-row" style="display: none;">
-                            <td>ONVIEW</td>
-                            ${Object.keys(beatStats).map(beat => {
-                                const stats = beat.specialCategories.ONVIEW[priority];
-                                if (!stats || stats.count === 0) return '<td colspan="4">No records</td>';
-                                return `
-                                    <td>${stats.count.toLocaleString()}</td>
-                                    <td>${formatTime(stats.mean)}</td>
-                                    <td>${formatTime(stats.median)}</td>
-                                    <td>${formatTime(stats.min)} - ${formatTime(stats.max)}</td>
-                                `;
-                            }).join('')}
-                        </tr>`;
-
-                    // Add example call types
-                    const examples = Object.entries(beatStats)
-                        .filter(([_, beat]) => beat.onviewExamples[priority] && beat.onviewExamples[priority].size > 0)
-                        .map(([beat, data]) => `${beat}: ${[...data.onviewExamples[priority]].slice(0, 4).join(' | ')}`)
-                        .join(' | ');
-
-                    if (examples) {
-                        html += `
-                            <tr class="expandable-row expandable-row-${priority} onview-row" style="display: none;">
-                                <td colspan="${1 + Object.keys(beatStats).length * 4}" style="font-size: 0.85em; color: #666;">
-                                    <em>Examples: ${examples}</em>
-                                </td>
-                            </tr>`;
-                    }
-                }
+                html += renderPrioritySection(priority, beats, beatStats, hasOnviewData);
             });
-            
+
             html += `
-                    <tr>
-                        <td><strong>Total Calls</strong></td>
-                        ${Object.keys(beatStats).map(beat => `
-                            <td colspan="4">${beatStats[beat].totalCalls.toLocaleString()}</td>
-                        `).join('')}
-                    </tr>
+                <tr>
+                    <td><strong>Total Calls</strong></td>
+                    ${beats.map((beat, i) => `
+                        <td colspan="4" class="${i > 0 ? 'beat-section' : ''}">${beatStats[beat].totalCalls.toLocaleString()}</td>
+                    `).join('')}
+                </tr>
                 </table>`;
             
             resultsDiv.innerHTML = html;
+        }
+
+        function renderPrioritySection(priority, beats, beatStats, hasOnviewData) {
+            let html = `
+                <tr class="priority-${priority}">
+                    <td>
+                        <strong>Priority ${priority}</strong>
+                        ${hasOnviewData ? 
+                            `<button id="toggle-${priority}" class="expandable-button" onclick="toggleRows('${priority}')">+</button>` 
+                            : ''}
+                    </td>
+                    ${beats.map((beat, i) => {
+                        const stats = beatStats[beat].priorities[priority];
+                        if (!stats) return `<td colspan="4" class="${i > 0 ? 'beat-section' : ''}">No records</td>`;
+                        return `
+                            <td class="${i > 0 ? 'beat-section' : ''}">${stats.count.toLocaleString()}</td>
+                            <td>${formatTime(stats.mean)}</td>
+                            <td>${formatTime(stats.median)}</td>
+                            <td>${formatTime(stats.min)} - ${formatTime(stats.max)}</td>
+                        `;
+                    }).join('')}
+                </tr>`;
+
+            if (hasOnviewData) {
+                html += renderOnviewRows(priority, beats, beatStats);
+            }
+
+            return html;
+        }
+
+        function renderOnviewRows(priority, beats, beatStats) {
+            let html = `
+                <tr class="expandable-row expandable-row-${priority} onview-row" style="display: none;">
+                    <td>ONVIEW</td>
+                    ${beats.map((beat, i) => {
+                        const stats = beatStats[beat].specialCategories.ONVIEW[priority];
+                        if (!stats || stats.count === 0) return `<td colspan="4" class="${i > 0 ? 'beat-section' : ''}">No records</td>`;
+                        return `
+                            <td class="${i > 0 ? 'beat-section' : ''}">${stats.count.toLocaleString()}</td>
+                            <td>${formatTime(stats.mean)}</td>
+                            <td>${formatTime(stats.median)}</td>
+                            <td>${formatTime(stats.min)} - ${formatTime(stats.max)}</td>
+                        `;
+                    }).join('')}
+                </tr>`;
+
+            const examples = Object.entries(beatStats)
+                .filter(([_, beat]) => beat.onviewExamples[priority]?.size > 0)
+                .map(([beat, data]) => `${beat}: ${[...data.onviewExamples[priority]].slice(0, 4).join(' | ')}`)
+                .join(' | ');
+
+            if (examples) {
+                html += `
+                    <tr class="expandable-row expandable-row-${priority} onview-row examples-row" style="display: none;">
+                        <td colspan="${1 + beats.length * 4}">
+                            Examples: ${examples}
+                        </td>
+                    </tr>`;
+            }
+
+            return html;
         }
 
         function openMapSelector() {
@@ -985,6 +921,59 @@
             `;
             
             debugContent.innerHTML = html;
+        }
+
+        // Improved data processing function
+        function processData(allData, beat) {
+            const stats = {
+                totalCalls: 0,
+                priorities: {},
+                specialCategories: {
+                    ONVIEW: {}
+                },
+                onviewExamples: {}
+            };
+
+            // Process all records first
+            allData.forEach(d => {
+                if (!d.cad_event_first_response_time_s_ || !d.priority) return;
+                
+                const responseTimeSeconds = Number(d.cad_event_first_response_time_s_);
+                if (responseTimeSeconds <= 0 || responseTimeSeconds >= 86400) return;
+
+                const priority = d.priority;
+                const isOnview = d.call_type_indicator === 'ONVIEW';
+                
+                if (isOnview) {
+                    if (!stats.specialCategories.ONVIEW[priority]) {
+                        stats.specialCategories.ONVIEW[priority] = [];
+                        stats.onviewExamples[priority] = new Set();
+                    }
+                    stats.specialCategories.ONVIEW[priority].push(responseTimeSeconds);
+                    if (d.final_call_type) {
+                        stats.onviewExamples[priority].add(d.final_call_type);
+                    }
+                } else if (d.call_type_indicator === 'DISPATCH') {
+                    if (!stats.priorities[priority]) {
+                        stats.priorities[priority] = [];
+                    }
+                    stats.priorities[priority].push(responseTimeSeconds);
+                    stats.totalCalls++;
+                }
+            });
+
+            // Calculate statistics for all categories
+            for (const priority in stats.priorities) {
+                stats.priorities[priority] = calculateStats(stats.priorities[priority]);
+            }
+            
+            for (const priority in stats.specialCategories.ONVIEW) {
+                if (stats.specialCategories.ONVIEW[priority].length > 0) {
+                    stats.specialCategories.ONVIEW[priority] = calculateStats(stats.specialCategories.ONVIEW[priority]);
+                }
+            }
+
+            return stats;
         }
     </script>
 </body>
