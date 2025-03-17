@@ -259,7 +259,9 @@
                     const response = await fetch(apiUrl + countQuery);
                     const data = await response.json();
                     if (data && data[0] && data[0].count) {
-                        totalCount += Number(data[0].count);
+                        const beatCount = Number(data[0].count);
+                        totalCount += beatCount;
+                        console.log(`Expected count for beat ${beat}: ${beatCount}`);
                     }
                 } catch (error) {
                     console.warn("Count estimation failed, proceeding anyway");
@@ -269,23 +271,49 @@
             // Calculate rough time estimate (1 second per 1000 records plus API delays)
             if (totalCount > 0) {
                 const estimatedSeconds = Math.ceil(totalCount / 1000) + 1;
+                const startTime = Date.now();
                 let remainingTime = estimatedSeconds;
+                let totalProcessed = 0;
 
-                function updateCountdown() {
+                function updateCountdown(processed = 0) {
+                    const elapsedMs = Date.now() - startTime;
+                    const elapsedSeconds = elapsedMs / 1000;
+                    
+                    // Calculate time-based progress
+                    const timeProgressPercent = Math.min(100, Math.round((elapsedSeconds / estimatedSeconds) * 100));
+                    
+                    // Calculate actual progress based on records
+                    const recordProgressPercent = Math.min(100, Math.round((processed / totalCount) * 100));
+                    
+                    // Update remaining time
+                    remainingTime = Math.max(0, estimatedSeconds - elapsedSeconds);
                     const minutes = Math.floor(remainingTime / 60);
-                    const seconds = remainingTime % 60;
+                    const seconds = Math.floor(remainingTime % 60);
                     const timeText = minutes > 0 ? 
                         `${minutes} minute${minutes > 1 ? 's' : ''} and ${seconds} second${seconds !== 1 ? 's' : ''}` : 
                         `${seconds} second${seconds !== 1 ? 's' : ''}`;
 
                     resultsDiv.innerHTML = `<div class="loading">
                         Fetching ${totalCount.toLocaleString()} records<br>
+                        <small>Records processed: ${processed.toLocaleString()} / ${totalCount.toLocaleString()} (${recordProgressPercent}%)</small><br>
                         <small>Estimated time remaining: ${timeText}</small>
+                        <div id="progress-container" style="width: 100%; background: #ddd; border-radius: 5px; overflow: hidden; margin-top: 5px;">
+                            <div id="progress-bar" style="width: ${timeProgressPercent}%; height: 20px; background: #4CAF50; transition: width 1s linear;">
+                                <div style="color: white; text-align: center; line-height: 20px; font-size: 12px; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">
+                                    ${timeProgressPercent}%
+                                </div>
+                            </div>
+                        </div>
                     </div>`;
                 }
 
                 // Initial display
-                updateCountdown();
+                updateCountdown(0);
+
+                // Set up a smooth progress update interval
+                const progressInterval = setInterval(() => {
+                    updateCountdown(totalProcessed);
+                }, 1000);
 
                 try {
                     for (let beat of dispatchBeats) {
@@ -298,35 +326,35 @@
                             'BACKUP-URGENT': {}
                         };
                         
+                        // Get total count for this beat for verification
+                        let expectedCount = 0;
+                        try {
+                            const verifyQuery = `?$select=count(*) as count&$where=` +
+                                `cad_event_original_time_queued >= '${startDate}T00:00:00' AND ` +
+                                `cad_event_original_time_queued <= '${endDate}T23:59:59' AND ` +
+                                `dispatch_beat='${beat}'`;
+                            const response = await fetch(apiUrl + verifyQuery);
+                            const data = await response.json();
+                            if (data && data[0] && data[0].count) {
+                                expectedCount = Number(data[0].count);
+                                console.log(`Verified count for beat ${beat}: ${expectedCount}`);
+                            }
+                        } catch (error) {
+                            console.warn(`Count verification failed for beat ${beat}:`, error);
+                        }
+                        
                         while (true) {
-                            const query = `?$where=cad_event_original_time_queued >= '${startDate}T00:00:00' AND ` +
+                            const query = `?$select=cad_event_original_time_queued,cad_event_first_response_time_s_,priority,call_type_indicator,final_call_type,dispatch_beat` +
+                                `&$where=cad_event_original_time_queued >= '${startDate}T00:00:00' AND ` +
                                 `cad_event_original_time_queued <= '${endDate}T23:59:59' AND ` +
                                 `dispatch_beat='${beat}'` +
-                                `&$limit=2000&$offset=${offset}` +  // Increased limit for faster loading
+                                `&$limit=1000&$offset=${offset}` +
                                 `&$order=cad_event_original_time_queued DESC`;
                             
                             // Only store the first query for display
                             if (offset === 0) {
                                 currentQueries[1] = query;
                                 console.log(`Initial query for beat ${beat}:`, apiUrl + query);
-                                
-                                // Try a direct count by priority to verify data
-                                try {
-                                    const priorityCheckUrl = `${apiUrl}?$select=priority, call_type_indicator, count(*) as count&$where=` +
-                                        `cad_event_original_time_queued >= '${startDate}T00:00:00' AND ` +
-                                        `cad_event_original_time_queued <= '${endDate}T23:59:59' AND ` +
-                                        `dispatch_beat='${beat}'` + 
-                                        `&$group=priority, call_type_indicator`;
-                                    
-                                    console.log(`Priority count check URL: ${priorityCheckUrl}`);
-                                    const checkResponse = await fetch(priorityCheckUrl);
-                                    if (checkResponse.ok) {
-                                        const countData = await checkResponse.json();
-                                        console.log(`Priority distribution from API for beat ${beat}:`, countData);
-                                    }
-                                } catch (err) {
-                                    console.warn("Priority count check failed:", err);
-                                }
                             }
 
                             try {
@@ -338,30 +366,25 @@
                                 const data = await response.json();
                                 console.log(`Received ${data?.length || 0} records for beat ${beat} at offset ${offset}`);
                                 
-                                // Log sample of records for debugging
-                                if (offset === 0) {
-                                    console.log('Sample records from first batch:', 
-                                        data?.slice(0, 3).map(d => ({
-                                            beat: d.dispatch_beat,
-                                            priority: d.priority,
-                                            time: d.cad_event_original_time_queued,
-                                            type: d.call_type_indicator
-                                        }))
-                                    );
-                                }
-
                                 if (!data || data.length === 0) break;
                                 allData = allData.concat(data);
-                                offset += 2000;
+                                offset += 1000;
 
-                                remainingTime = Math.max(0, remainingTime - 1);
-                                updateCountdown();
+                                // Update total processed count but don't update progress bar here
+                                totalProcessed += data.length;
+
+                                // Standard rate limiting delay
                                 await new Promise(resolve => setTimeout(resolve, 1000));
                             } catch (error) {
                                 console.error(`Error fetching data for beat ${beat}:`, error);
                                 alert(`Failed to fetch data for beat ${beat}: ${error.message}`);
                                 break;
                             }
+                        }
+
+                        // Verify final count matches expected
+                        if (expectedCount > 0 && allData.length !== expectedCount) {
+                            console.warn(`Count mismatch for beat ${beat}: Expected ${expectedCount}, got ${allData.length}`);
                         }
 
                         // Process data for this beat
@@ -380,15 +403,14 @@
                         console.log(`Completed processing beat ${beat}`);
                     }
                 } finally {
-                    // Show completion
+                    // Clear the progress update interval
+                    clearInterval(progressInterval);
                     resultsDiv.innerHTML = '<div class="loading">Processing results...</div>';
                 }
 
                 displayResults(beatStats);
             } else {
                 resultsDiv.innerHTML = '<div class="loading">Fetching data...</div>';
-                // Continue with data fetching even if count estimation failed
-                // ... rest of the data fetching code ...
             }
         }
         
@@ -519,7 +541,7 @@
                         return `<td colspan="4" class="${i > 0 ? 'beat-section' : ''}">
                             ${beatStats[beat].totalCalls.toLocaleString()}
                             ${onviewCalls > 0 ? 
-                                `<span style="color: #666; font-style: italic; margin-left: 8px;">+ ${onviewCalls} ONVIEW</span>` 
+                                `<span style="color: #666; font-style: italic; margin-left: 8px;"> [${onviewCalls} ONVIEW]</span>` 
                                 : ''}
                         </td>`;
                     }).join('')}
@@ -549,8 +571,11 @@
                         if (!stats || stats.count === 0) 
                             return `<td colspan="4" class="${i > 0 ? 'beat-section' : ''}">No records</td>`;
                         
+                        const validTimesNote = stats.noResponseTime || stats.invalidResponseTime ? 
+                            `<br><small style="color: #666;">(${stats.validResponseTimes} valid times, ${stats.noResponseTime} missing, ${stats.invalidResponseTime} invalid)</small>` : '';
+                        
                         return `
-                            <td class="${i > 0 ? 'beat-section' : ''}">${stats.count.toLocaleString()}</td>
+                            <td class="${i > 0 ? 'beat-section' : ''}">${stats.count.toLocaleString()}${validTimesNote}</td>
                             <td>${formatTime(stats.mean)}</td>
                             <td>${formatTime(stats.median)}</td>
                             <td>${formatTime(stats.min)} - ${formatTime(stats.max)}</td>
@@ -580,8 +605,11 @@
                         if (!stats || stats.count === 0) 
                             return `<td colspan="4" class="${i > 0 ? 'beat-section' : ''}">No records</td>`;
                         
+                        const validTimesNote = stats.noResponseTime || stats.invalidResponseTime ? 
+                            `<br><small style="color: #666;">(${stats.validResponseTimes} valid times, ${stats.noResponseTime} missing, ${stats.invalidResponseTime} invalid)</small>` : '';
+                        
                         return `
-                            <td class="${i > 0 ? 'beat-section' : ''}">${stats.count.toLocaleString()}</td>
+                            <td class="${i > 0 ? 'beat-section' : ''}">${stats.count.toLocaleString()}${validTimesNote}</td>
                             <td>${formatTime(stats.mean)}</td>
                             <td>${formatTime(stats.median)}</td>
                             <td>${formatTime(stats.min)} - ${formatTime(stats.max)}</td>
@@ -1019,90 +1047,126 @@
                 totalCalls: 0,
                 priorities: {},
                 specialCategories: {
-                    ONVIEW: {}
+                    ONVIEW: {},
+                    UNKNOWN: {} // Add tracking for unknown categories
                 },
-                onviewExamples: {}
+                onviewExamples: {},
+                unknownTypes: new Set(), // Track unknown call types
+                unknownPriorities: new Set() // Track unknown priorities
             };
 
-            // Debug counters
+            // Enhanced debug counters
             let debugStats = {
                 totalRecords: allData.length,
                 byPriority: {},
                 byCallType: {},
+                byPriorityAndType: {}, // New counter for priority+type combinations
                 noResponseTime: 0,
                 noPriority: 0,
                 invalidResponseTime: 0,
                 validDispatch: 0,
-                validOnview: 0
+                validOnview: 0,
+                runningTotal: 0 // New counter to track running total
             };
 
-            // First pass: count everything
-            allData.forEach(d => {
-                // Track all records by priority and call type
+            // First pass: count everything and collect valid response times separately
+            allData.forEach((d, index) => {
                 const priority = d.priority || 'unknown';
                 const callType = d.call_type_indicator || 'unknown';
                 
-                debugStats.byPriority[priority] = (debugStats.byPriority[priority] || 0) + 1;
-                debugStats.byCallType[callType] = (debugStats.byCallType[callType] || 0) + 1;
+                // Initialize containers if needed (for counts)
+                if (!stats.priorities[priority]) {
+                    stats.priorities[priority] = {
+                        totalCalls: 0,
+                        responseTimes: [],
+                        noResponseTime: 0,
+                        invalidResponseTime: 0
+                    };
+                }
+                if (!stats.specialCategories.ONVIEW[priority]) {
+                    stats.specialCategories.ONVIEW[priority] = {
+                        totalCalls: 0,
+                        responseTimes: [],
+                        noResponseTime: 0,
+                        invalidResponseTime: 0
+                    };
+                    stats.onviewExamples[priority] = new Set();
+                }
 
-                const isOnview = callType === 'ONVIEW';
-                
-                // Initialize containers if needed
-                if (isOnview) {
-                    if (!stats.specialCategories.ONVIEW[priority]) {
-                        stats.specialCategories.ONVIEW[priority] = {
-                            totalCalls: 0,
-                            responseTimes: []
-                        };
-                        stats.onviewExamples[priority] = new Set();
-                    }
+                // Always increment total counts regardless of response time
+                stats.totalCalls++;
+                debugStats.runningTotal++;
+
+                // Track call type counts
+                if (callType === 'ONVIEW') {
                     stats.specialCategories.ONVIEW[priority].totalCalls++;
                     if (d.final_call_type) {
                         stats.onviewExamples[priority].add(d.final_call_type);
                     }
-                } else {
-                    if (!stats.priorities[priority]) {
-                        stats.priorities[priority] = {
-                            totalCalls: 0,
-                            responseTimes: []
-                        };
-                    }
+                } else if (callType === 'DISPATCH') {
                     stats.priorities[priority].totalCalls++;
-                    stats.totalCalls++;
+                } else {
+                    if (!stats.specialCategories.UNKNOWN[priority]) {
+                        stats.specialCategories.UNKNOWN[priority] = { totalCalls: 0 };
+                    }
+                    stats.specialCategories.UNKNOWN[priority].totalCalls++;
                 }
 
-                // Track response times when available
+                // Separately handle response time tracking
                 if (!d.cad_event_first_response_time_s_) {
                     debugStats.noResponseTime++;
+                    if (callType === 'ONVIEW') {
+                        stats.specialCategories.ONVIEW[priority].noResponseTime++;
+                    } else if (callType === 'DISPATCH') {
+                        stats.priorities[priority].noResponseTime++;
+                    }
                     return;
                 }
 
                 const responseTimeSeconds = Number(d.cad_event_first_response_time_s_);
-                if (isNaN(responseTimeSeconds) || responseTimeSeconds < 0) {
+                if (isNaN(responseTimeSeconds) || responseTimeSeconds < 0 || responseTimeSeconds >= 86400) {
                     debugStats.invalidResponseTime++;
+                    if (callType === 'ONVIEW') {
+                        stats.specialCategories.ONVIEW[priority].invalidResponseTime++;
+                    } else if (callType === 'DISPATCH') {
+                        stats.priorities[priority].invalidResponseTime++;
+                    }
                     return;
                 }
 
-                // For response time stats, we'll include all times under 24 hours
-                if (responseTimeSeconds >= 86400) {
-                    debugStats.invalidResponseTime++;
-                    return;
-                }
-
-                if (isOnview) {
+                // Only add valid response times to the arrays
+                if (callType === 'ONVIEW') {
                     stats.specialCategories.ONVIEW[priority].responseTimes.push(responseTimeSeconds);
                     debugStats.validOnview++;
-                } else {
+                } else if (callType === 'DISPATCH') {
                     stats.priorities[priority].responseTimes.push(responseTimeSeconds);
                     debugStats.validDispatch++;
+                }
+
+                // Debug logging
+                if (index % 1000 === 0) {
+                    console.log(`Processing record ${index} for beat ${beat}:`, {
+                        priority,
+                        callType,
+                        runningTotal: debugStats.runningTotal,
+                        totalCalls: stats.totalCalls,
+                        record: d
+                    });
                 }
             });
 
             // Calculate statistics for all categories
             for (const priority in stats.priorities) {
                 const times = stats.priorities[priority].responseTimes;
+                const totalCalls = stats.priorities[priority].totalCalls;
+                const noResponseTime = stats.priorities[priority].noResponseTime;
+                const invalidResponseTime = stats.priorities[priority].invalidResponseTime;
+                
                 stats.priorities[priority] = {
-                    count: stats.priorities[priority].totalCalls,
+                    count: totalCalls,
+                    noResponseTime,
+                    invalidResponseTime,
+                    validResponseTimes: times.length,
                     ...(times.length > 0 ? calculateStats(times) : {
                         mean: null,
                         median: null,
@@ -1114,8 +1178,15 @@
             
             for (const priority in stats.specialCategories.ONVIEW) {
                 const times = stats.specialCategories.ONVIEW[priority].responseTimes;
+                const totalCalls = stats.specialCategories.ONVIEW[priority].totalCalls;
+                const noResponseTime = stats.specialCategories.ONVIEW[priority].noResponseTime;
+                const invalidResponseTime = stats.specialCategories.ONVIEW[priority].invalidResponseTime;
+                
                 stats.specialCategories.ONVIEW[priority] = {
-                    count: stats.specialCategories.ONVIEW[priority].totalCalls,
+                    count: totalCalls,
+                    noResponseTime,
+                    invalidResponseTime,
+                    validResponseTimes: times.length,
                     ...(times.length > 0 ? calculateStats(times) : {
                         mean: null,
                         median: null,
@@ -1125,11 +1196,24 @@
                 };
             }
 
-            console.log(`Debug stats for beat ${beat}:`, {
-                ...debugStats,
-                priorityBreakdown: debugStats.byPriority,
-                callTypeBreakdown: debugStats.byCallType
+            // Final verification log
+            console.log(`Final stats for beat ${beat}:`, {
+                totalCalls: stats.totalCalls,
+                priorityCounts: Object.fromEntries(
+                    Object.entries(stats.priorities).map(([k, v]) => [k, v.count])
+                ),
+                onviewCounts: Object.fromEntries(
+                    Object.entries(stats.specialCategories.ONVIEW).map(([k, v]) => [k, v.count])
+                )
             });
+
+            // After processing, log unknown types and priorities
+            if (stats.unknownTypes.size > 0) {
+                console.log(`Unknown call types for beat ${beat}:`, [...stats.unknownTypes]);
+            }
+            if (stats.unknownPriorities.size > 0) {
+                console.log(`Records with unknown priorities for beat ${beat}:`, [...stats.unknownPriorities]);
+            }
 
             return stats;
         }
