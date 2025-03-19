@@ -237,6 +237,28 @@
             font-size: 14px;
             color: #000;
         }
+        /* Update custom-button to match other buttons */
+        .custom-button {
+            display: inline-block;
+            padding: 5px 10px;
+            margin-left: 10px;
+            font-size: inherit;
+            font-weight: normal;
+            text-align: center;
+            text-decoration: none;
+            color: white;
+            background-color: #007bff;
+            border-radius: 4px;
+            border: 1px solid #0056b3;
+            cursor: pointer;
+        }
+        .custom-button:hover {
+            background-color: #0056b3;
+        }
+        .button-container {
+            text-align: right;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
@@ -251,6 +273,7 @@
         <button class="map-button" onclick="openMapSelector()">Select Dispatch Beat(s)<br>from Map</button>
         <button onclick="fetchData()">Get Response Times</button>
         <button class="show-query-btn" onclick="toggleQuery()">Show API Query</button>
+        <a href="index.html" class="custom-button">Return to Data Map</a>
     </div>
     
     <div id="query-display" class="query-info"></div>
