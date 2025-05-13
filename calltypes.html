@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Call Types by Priority</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .custom-button {
+            display: inline-block;
+            padding: 12px 20px;
+            margin: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            text-decoration: none;
+            color: white;
+            background-color: #007bff;
+            border-radius: 8px;
+            border: 2px solid #0056b3;
+            transition: all 0.3s ease-in-out;
+        }
+        .custom-button:hover {
+            background-color: #0056b3;
+            border-color: #004494;
+        }
+        .custom-button:active {
+            background-color: #003366;
+            border-color: #002244;
+        }
+        .button-container {
+            text-align: right;
+            margin-top: 20px;
+        }
+        .accordion {
+            margin: 20px 0;
+        }
+        .accordion-item {
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            background: #f9f9f9;
+        }
+        .accordion-header {
+            cursor: pointer;
+            padding: 16px;
+            font-size: 1.2em;
+            font-weight: bold;
+            background: #e9ecef;
+            border-radius: 6px 6px 0 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .accordion-header:hover {
+            background: #d6e0f0;
+        }
+        .accordion-content {
+            display: none;
+            padding: 16px;
+            background: #fff;
+            border-radius: 0 0 6px 6px;
+        }
+        .priority-label {
+            font-weight: bold;
+        }
+        .call-type-list {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .call-type-list li {
+            margin-bottom: 6px;
+        }
+        .expand-icon {
+            font-size: 1.2em;
+            margin-left: 10px;
+            transition: transform 0.2s;
+        }
+        .accordion-item.open .expand-icon {
+            transform: rotate(90deg);
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+    <div class="button-container">
+        <a href="simplequery.html" class="custom-button">Back to Response Time Lookup</a>
+    </div>
+
+    <h1>Call Types by Priority Level</h1>
+    <p>This page shows all unique call types organized by their priority levels. Click a priority to expand and see its call types.</p>
+
+    <div id="accordion" class="accordion"></div>
+
+    <script>
+        async function loadCallTypes() {
+            try {
+                const response = await fetch('Data/2025B1PriorityCallTypes.csv');
+                const csvText = await response.text();
+                // Use PapaParse to parse the CSV
+                const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+                const priorities = parsed.meta.fields;
+                const callTypesByPriority = {};
+                priorities.forEach(priority => callTypesByPriority[priority] = []);
+                parsed.data.forEach(row => {
+                    priorities.forEach(priority => {
+                        const callType = row[priority] && row[priority].trim();
+                        if (callType) callTypesByPriority[priority].push(callType);
+                    });
+                });
+
+                // Sort call types alphabetically for each priority
+                priorities.forEach(priority => {
+                    callTypesByPriority[priority].sort((a, b) => a.localeCompare(b));
+                });
+
+                // Build accordion
+                const accordion = document.getElementById('accordion');
+                priorities.forEach(priority => {
+                    const item = document.createElement('div');
+                    item.className = 'accordion-item';
+
+                    const header = document.createElement('div');
+                    header.className = 'accordion-header';
+                    header.innerHTML = `<span class="priority-label">${priority}</span> <span class="expand-icon">▶</span>`;
+                    header.onclick = function() {
+                        item.classList.toggle('open');
+                        const content = item.querySelector('.accordion-content');
+                        if (content.style.display === 'block') {
+                            content.style.display = 'none';
+                        } else {
+                            content.style.display = 'block';
+                        }
+                    };
+
+                    const content = document.createElement('div');
+                    content.className = 'accordion-content';
+                    const ul = document.createElement('ul');
+                    ul.className = 'call-type-list';
+                    callTypesByPriority[priority].forEach(type => {
+                        const li = document.createElement('li');
+                        li.textContent = type;
+                        ul.appendChild(li);
+                    });
+                    content.appendChild(ul);
+
+                    item.appendChild(header);
+                    item.appendChild(content);
+                    accordion.appendChild(item);
+                });
+            } catch (error) {
+                console.error('Error loading call types:', error);
+                document.getElementById('accordion').innerHTML = 
+                    '<p style="color: red;">Error loading call types data. Please try again later.</p>';
+            }
+        }
+        window.onload = loadCallTypes;
+    </script>
+</body>
+</html> 

@@ -257,7 +257,11 @@
         }
         .button-container {
             text-align: right;
-            margin-bottom: 20px;
+            margin-top: 20px;
+        }
+        /* Add new styles for the call types button */
+        .call-types-button {
+            margin-left: 10px;
         }
     </style>
 </head>
@@ -273,7 +277,7 @@
         <button class="map-button" onclick="openMapSelector()">Select Dispatch Beat(s)<br>from Map</button>
         <button onclick="fetchData()">Get Response Times</button>
         <button class="show-query-btn" onclick="toggleQuery()">Show API Query</button>
-        <a href="index.html" class="custom-button">Return to Data Map</a>
+        <a href="index.html" class="custom-button">Back to Map</a>
     </div>
     
     <div id="query-display" class="query-info"></div>
@@ -290,6 +294,11 @@
                 <button onclick="closeMapSelector()">Cancel</button>
             </div>
         </div>
+    </div>
+
+    <div class="button-container">
+        <a href="index.html" class="custom-button">Back to Map</a>
+        <a href="calltypes.html" class="custom-button call-types-button">View Call Types by Priority</a>
     </div>
 
     <script>
