@@ -9,34 +9,53 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="normalize.css">
     <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
         /* Flex container for filters and button */
         .top-bar {
             display: flex;
-            justify-content: space-between; /* Left-align filters, right-align button */
+            justify-content: space-between;
             align-items: center;
-            padding: 10px;
+            padding: 4px 10px; /* Reduce vertical padding */
             background-color: #f8f9fa;
             border-bottom: 2px solid #000000;
+            min-height: 36px;
         }
         /* Filters container */
         .filters {
             display: flex;
             gap: 10px; /* Adds spacing between filter inputs */
         }
+        .filters label,
+        .filters input,
+        .filters button {
+            font-size: 0.95em;
+            padding: 2px 6px;
+            height: 28px;
+            margin: 0 2px;
+        }
         #map-container {
             display: flex;
             width: 100%;
-            height: 800px; /* Set a fixed height or adjust as needed */
+            height: calc(100vh - 115px); /* Tweak for perfect fit */
+            min-height: 300px;
+            max-height: 100vh;
             transform: translateZ(0);
         }
         #map {
-            flex: 3; /* Adjust as needed for map width */
+            flex: 3;
             height: 100%;
+            min-height: 300px;
+            max-height: 100vh;
             transform: translateZ(0);
         }
         #sidebar {
-            flex: 1; /* Adjust as needed for sidebar width */
+            flex: 1;
             height: 100%;
+            min-height: 300px;
+            max-height: 100vh;
             overflow-y: auto;
             border-left: 2px solid #000000;
             border-right: 2px solid #000000;
@@ -59,11 +78,11 @@
         }
         /* Make the link look like a button */
         .custom-button {
+            padding: 6px 12px;
+            font-size: 1em;
+            height: 32px;
+            margin: 0 2px;
             display: inline-block;
-            padding: 12px 20px;
-            margin: 15px;
-            font-size: 18px;
-            font-weight: bold;
             text-align: center;
             text-decoration: none;
             color: white;
@@ -148,6 +167,10 @@
         .sidebar-el.crime {
             border-left: 4px solid #dc3545;
         }
+        h1 {
+            margin: 8px 0 8px 0; /* Reduce top and bottom margin */
+            font-size: 2em;
+        }
     </style>
 </head>
 <body>
@@ -206,29 +229,6 @@
         // create Heatmap layers
         let callHeat = L.heatLayer([], { radius: 35, blur: 50 });
         let crimeHeat = L.heatLayer([], { radius: 35, blur: 50 });
-
-        // Add sidebar filter buttons
-        const sidebarHeader = document.createElement("div");
-        sidebarHeader.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 10px; margin: 10px 0;">
-                <div style="display: flex; justify-content: space-around;">
-                    <button id="showAllBtn" class="sidebar-filter-btn active">All</button>
-                    <button id="showCallsBtn" class="sidebar-filter-btn">911 Calls</button>
-                    <button id="showCrimesBtn" class="sidebar-filter-btn">Crimes</button>
-                </div>
-                <div id="categoryFilters" style="display: none;">
-                    <div class="category-section">
-                        <h4 style="margin: 5px 0; color: #666;">Crime Categories</h4>
-                        <div id="crimeCategories" style="display: flex; flex-wrap: wrap; gap: 5px;"></div>
-                    </div>
-                    <div class="category-section">
-                        <h4 style="margin: 5px 0; color: #666;">Call Categories</h4>
-                        <div id="callCategories" style="display: flex; flex-wrap: wrap; gap: 5px;"></div>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.getElementById("sidebar").insertBefore(sidebarHeader, document.getElementById("results"));
 
         // Add styles for category filters
         const categoryStyles = document.createElement('style');
@@ -316,36 +316,6 @@
                 el.classList.toggle('visible', isVisible);
             });
         }
-
-        // Update sidebar filter functionality
-        document.getElementById("showAllBtn").addEventListener("click", function() {
-            document.querySelectorAll(".sidebar-el").forEach(el => el.classList.add("visible"));
-            document.querySelectorAll(".sidebar-filter-btn").forEach(btn => btn.classList.remove("active"));
-            document.getElementById("categoryFilters").style.display = "none";
-            this.classList.add("active");
-        });
-
-        document.getElementById("showCallsBtn").addEventListener("click", function() {
-            document.querySelectorAll(".sidebar-el").forEach(el => {
-                el.classList.toggle("visible", el.classList.contains("call"));
-            });
-            document.querySelectorAll(".sidebar-filter-btn").forEach(btn => btn.classList.remove("active"));
-            document.getElementById("categoryFilters").style.display = "block";
-            document.getElementById("crimeCategories").style.display = "none";
-            document.getElementById("callCategories").style.display = "flex";
-            this.classList.add("active");
-        });
-
-        document.getElementById("showCrimesBtn").addEventListener("click", function() {
-            document.querySelectorAll(".sidebar-el").forEach(el => {
-                el.classList.toggle("visible", el.classList.contains("crime"));
-            });
-            document.querySelectorAll(".sidebar-filter-btn").forEach(btn => btn.classList.remove("active"));
-            document.getElementById("categoryFilters").style.display = "block";
-            document.getElementById("crimeCategories").style.display = "flex";
-            document.getElementById("callCategories").style.display = "none";
-            this.classList.add("active");
-        });
 
         // Listen for animations on cluster marker layers
         callClusters.on('animationend', function () {
@@ -868,6 +838,9 @@
                     createSidebarElement(layer);
                 }
             });
+
+            // --- Sidebar Filter Buttons (Calls, Crimes, All) ---
+            addSidebarFilterButtons();
         }
 
         function formatDate(dateString) {
@@ -979,156 +952,78 @@
             document.getElementById("results").appendChild(el);
         }
 
-        // Add filter buttons under the sidebar title
-        const sidebarTitle = document.querySelector('#sidebar h3');
-        const filterBtnBar = document.createElement('div');
-        filterBtnBar.style.display = 'flex';
-        filterBtnBar.style.justifyContent = 'center';
-        filterBtnBar.style.gap = '10px';
-        filterBtnBar.style.margin = '10px 0';
-        filterBtnBar.innerHTML = `
-            <button id="sidebarShowAllBtn" class="sidebar-filter-btn active">All</button>
-            <button id="sidebarShowCallsBtn" class="sidebar-filter-btn">Calls</button>
-            <button id="sidebarShowCrimesBtn" class="sidebar-filter-btn">Crimes</button>
-        `;
-        sidebarTitle.insertAdjacentElement('afterend', filterBtnBar);
+        // Track the current sidebar filter selection
+        let currentSidebarFilter = 'all'; // 'all', 'calls', or 'crimes'
 
-        // Add event listeners for sidebar filter buttons
-        document.getElementById('sidebarShowAllBtn').addEventListener('click', function() {
-            document.querySelectorAll('.sidebar-el').forEach(el => el.classList.add('visible'));
-            document.getElementById('sidebarShowAllBtn').classList.add('active');
-            document.getElementById('sidebarShowCallsBtn').classList.remove('active');
-            document.getElementById('sidebarShowCrimesBtn').classList.remove('active');
-        });
-        document.getElementById('sidebarShowCallsBtn').addEventListener('click', function() {
-            document.querySelectorAll('.sidebar-el').forEach(el => {
-                el.classList.toggle('visible', el.classList.contains('call'));
-            });
-            document.getElementById('sidebarShowAllBtn').classList.remove('active');
-            document.getElementById('sidebarShowCallsBtn').classList.add('active');
-            document.getElementById('sidebarShowCrimesBtn').classList.remove('active');
-        });
-        document.getElementById('sidebarShowCrimesBtn').addEventListener('click', function() {
-            document.querySelectorAll('.sidebar-el').forEach(el => {
-                el.classList.toggle('visible', el.classList.contains('crime'));
-            });
-            document.getElementById('sidebarShowAllBtn').classList.remove('active');
-            document.getElementById('sidebarShowCallsBtn').classList.remove('active');
-            document.getElementById('sidebarShowCrimesBtn').classList.add('active');
-        });
+        function addSidebarFilterButtons() {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarTitle = sidebar ? sidebar.querySelector('h3') : null;
+            if (!sidebar || !sidebarTitle) return; // Defensive: only run if sidebar and title exist
 
-        // Add modal for beat selection by map
-        const beatModalHtml = `
-            <div id="beatMapModal" class="modal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.4);">
-                <div class="modal-content" style="background-color:#fefefe; margin:5% auto; padding:20px; border:1px solid #888; width:80%; max-width:800px; border-radius:4px;">
-                    <span class="close" id="closeBeatMapModal" style="color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
-                    <h3>Select Beats from Map</h3>
-                    <div id="beatMap" style="height:600px; width:100%; margin:10px 0;"></div>
-                    <div style="margin-top:10px; text-align:right;">
-                        <button id="applyBeatSelection" style="margin-right:10px;">Apply Selection</button>
-                        <button id="cancelBeatSelection">Cancel</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', beatModalHtml);
+            // Remove any existing filter bar
+            const oldBar = document.getElementById('sidebarFilterBtnBar');
+            if (oldBar) oldBar.remove();
 
-        // Add button next to Dispatch Beats input
-        const dispatchBeatInput = document.getElementById('dispatchBeat');
-        const beatBtn = document.createElement('button');
-        beatBtn.textContent = 'Select Beat(s) from Map';
-        beatBtn.type = 'button';
-        beatBtn.style.marginLeft = '8px';
-        beatBtn.onclick = openBeatMapModal;
-        dispatchBeatInput.parentNode.insertBefore(beatBtn, dispatchBeatInput.nextSibling);
+            // Create new filter bar
+            const filterBtnBar = document.createElement('div');
+            filterBtnBar.id = 'sidebarFilterBtnBar';
+            filterBtnBar.style.display = 'flex';
+            filterBtnBar.style.justifyContent = 'center';
+            filterBtnBar.style.gap = '10px';
+            filterBtnBar.style.margin = '10px 0';
+            filterBtnBar.innerHTML = `
+                <button id="sidebarShowAllBtn" class="sidebar-filter-btn">All</button>
+                <button id="sidebarShowCallsBtn" class="sidebar-filter-btn">Calls</button>
+                <button id="sidebarShowCrimesBtn" class="sidebar-filter-btn">Crimes</button>
+            `;
+            sidebarTitle.insertAdjacentElement('afterend', filterBtnBar);
 
-        // Modal open/close logic
-        function openBeatMapModal() {
-            document.getElementById('beatMapModal').style.display = 'block';
-            setTimeout(initBeatMap, 100); // Delay to ensure modal is visible
-        }
-        document.getElementById('closeBeatMapModal').onclick = closeBeatMapModal;
-        document.getElementById('cancelBeatSelection').onclick = closeBeatMapModal;
-        function closeBeatMapModal() {
-            document.getElementById('beatMapModal').style.display = 'none';
-        }
+            // Add event listeners for filter buttons
+            const allBtn = document.getElementById('sidebarShowAllBtn');
+            const callsBtn = document.getElementById('sidebarShowCallsBtn');
+            const crimesBtn = document.getElementById('sidebarShowCrimesBtn');
+            if (allBtn) allBtn.onclick = function() {
+                document.querySelectorAll('.sidebar-el').forEach(el => el.classList.add('visible'));
+                allBtn.classList.add('active');
+                if (callsBtn) callsBtn.classList.remove('active');
+                if (crimesBtn) crimesBtn.classList.remove('active');
+                currentSidebarFilter = 'all';
+            };
+            if (callsBtn) callsBtn.onclick = function() {
+                document.querySelectorAll('.sidebar-el').forEach(el => {
+                    el.classList.toggle('visible', el.classList.contains('call'));
+                });
+                if (allBtn) allBtn.classList.remove('active');
+                callsBtn.classList.add('active');
+                if (crimesBtn) crimesBtn.classList.remove('active');
+                currentSidebarFilter = 'calls';
+            };
+            if (crimesBtn) crimesBtn.onclick = function() {
+                document.querySelectorAll('.sidebar-el').forEach(el => {
+                    el.classList.toggle('visible', el.classList.contains('crime'));
+                });
+                if (allBtn) allBtn.classList.remove('active');
+                if (callsBtn) callsBtn.classList.remove('active');
+                crimesBtn.classList.add('active');
+                currentSidebarFilter = 'crimes';
+            };
 
-        // Beat map selection logic
-        let beatMap = null;
-        let beatLayers = {};
-        let selectedBeats = new Set();
-        async function initBeatMap() {
-            if (beatMap) {
-                beatMap.invalidateSize();
-                return;
-            }
-            beatMap = L.map('beatMap').setView([47.6062, -122.3321], 11);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(beatMap);
-            // Load beatmap.geojson
-            let data;
-            try {
-                const response = await fetch('beatmap.geojson');
-                data = await response.json();
-            } catch (e) {
-                alert('Could not load beat boundaries.');
-                return;
-            }
-            data.features.forEach(feature => {
-                if (feature.geometry && feature.properties && feature.properties.beat) {
-                    let latLngs;
-                    const coordinates = feature.geometry.coordinates;
-                    if (feature.geometry.type === 'MultiPolygon') {
-                        latLngs = coordinates.map(polygon => polygon[0].map(coord => [coord[1], coord[0]]));
-                    } else if (coordinates[0][0] && Array.isArray(coordinates[0][0]) && coordinates[0][0].length === 2) {
-                        latLngs = [coordinates[0].map(coord => [coord[1], coord[0]])];
-                    } else {
-                        latLngs = [coordinates.map(coord => [coord[1], coord[0]])];
-                    }
-                    const polygon = L.polygon(latLngs, {
-                        color: '#3388ff',
-                        weight: 2,
-                        fillOpacity: 0.2
-                    }).addTo(beatMap);
-                    polygon.on('click', () => toggleBeatSelection(feature.properties.beat, polygon));
-                    beatLayers[feature.properties.beat] = polygon;
-                    // Add label
-                    const center = polygon.getBounds().getCenter();
-                    L.marker(center, {
-                        icon: L.divIcon({
-                            className: 'beat-label',
-                            html: feature.properties.beat,
-                            iconSize: null,
-                            iconAnchor: [15, 0]
-                        })
-                    }).addTo(beatMap);
-                }
-            });
-            // Pre-select beats from input
-            const currentBeats = dispatchBeatInput.value.split(',').map(b => b.trim()).filter(b => b);
-            selectedBeats = new Set(currentBeats);
-            Object.entries(beatLayers).forEach(([beat, layer]) => {
-                if (selectedBeats.has(beat)) {
-                    layer.setStyle({ fillColor: '#00ff00', fillOpacity: 0.4 });
-                } else {
-                    layer.setStyle({ fillColor: '#3388ff', fillOpacity: 0.2 });
-                }
-            });
-        }
-        function toggleBeatSelection(beat, polygon) {
-            if (selectedBeats.has(beat)) {
-                selectedBeats.delete(beat);
-                polygon.setStyle({ fillColor: '#3388ff', fillOpacity: 0.2 });
-            } else {
-                selectedBeats.add(beat);
-                polygon.setStyle({ fillColor: '#00ff00', fillOpacity: 0.4 });
+            // Re-apply the current filter after buttons are created
+            if (currentSidebarFilter === 'calls' && callsBtn) {
+                callsBtn.click();
+            } else if (currentSidebarFilter === 'crimes' && crimesBtn) {
+                crimesBtn.click();
+            } else if (allBtn) {
+                allBtn.click();
             }
         }
-        document.getElementById('applyBeatSelection').onclick = function() {
-            dispatchBeatInput.value = Array.from(selectedBeats).sort().join(', ');
-            closeBeatMapModal();
-        };
+
+        // Handle window resize to keep map responsive
+        window.addEventListener('resize', function() {
+            if (window.map && window.map.invalidateSize) {
+                window.map.invalidateSize();
+            }
+        });
 
     </script>
 </body>
