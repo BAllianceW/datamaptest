@@ -1017,5 +1017,118 @@
             document.getElementById('sidebarShowCrimesBtn').classList.add('active');
         });
 
+        // Add modal for beat selection by map
+        const beatModalHtml = `
+            <div id="beatMapModal" class="modal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.4);">
+                <div class="modal-content" style="background-color:#fefefe; margin:5% auto; padding:20px; border:1px solid #888; width:80%; max-width:800px; border-radius:4px;">
+                    <span class="close" id="closeBeatMapModal" style="color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
+                    <h3>Select Beats from Map</h3>
+                    <div id="beatMap" style="height:600px; width:100%; margin:10px 0;"></div>
+                    <div style="margin-top:10px; text-align:right;">
+                        <button id="applyBeatSelection" style="margin-right:10px;">Apply Selection</button>
+                        <button id="cancelBeatSelection">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', beatModalHtml);
+
+        // Add button next to Dispatch Beats input
+        const dispatchBeatInput = document.getElementById('dispatchBeat');
+        const beatBtn = document.createElement('button');
+        beatBtn.textContent = 'Select Beat(s) from Map';
+        beatBtn.type = 'button';
+        beatBtn.style.marginLeft = '8px';
+        beatBtn.onclick = openBeatMapModal;
+        dispatchBeatInput.parentNode.insertBefore(beatBtn, dispatchBeatInput.nextSibling);
+
+        // Modal open/close logic
+        function openBeatMapModal() {
+            document.getElementById('beatMapModal').style.display = 'block';
+            setTimeout(initBeatMap, 100); // Delay to ensure modal is visible
+        }
+        document.getElementById('closeBeatMapModal').onclick = closeBeatMapModal;
+        document.getElementById('cancelBeatSelection').onclick = closeBeatMapModal;
+        function closeBeatMapModal() {
+            document.getElementById('beatMapModal').style.display = 'none';
+        }
+
+        // Beat map selection logic
+        let beatMap = null;
+        let beatLayers = {};
+        let selectedBeats = new Set();
+        async function initBeatMap() {
+            if (beatMap) {
+                beatMap.invalidateSize();
+                return;
+            }
+            beatMap = L.map('beatMap').setView([47.6062, -122.3321], 11);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(beatMap);
+            // Load beatmap.geojson
+            let data;
+            try {
+                const response = await fetch('beatmap.geojson');
+                data = await response.json();
+            } catch (e) {
+                alert('Could not load beat boundaries.');
+                return;
+            }
+            data.features.forEach(feature => {
+                if (feature.geometry && feature.properties && feature.properties.beat) {
+                    let latLngs;
+                    const coordinates = feature.geometry.coordinates;
+                    if (feature.geometry.type === 'MultiPolygon') {
+                        latLngs = coordinates.map(polygon => polygon[0].map(coord => [coord[1], coord[0]]));
+                    } else if (coordinates[0][0] && Array.isArray(coordinates[0][0]) && coordinates[0][0].length === 2) {
+                        latLngs = [coordinates[0].map(coord => [coord[1], coord[0]])];
+                    } else {
+                        latLngs = [coordinates.map(coord => [coord[1], coord[0]])];
+                    }
+                    const polygon = L.polygon(latLngs, {
+                        color: '#3388ff',
+                        weight: 2,
+                        fillOpacity: 0.2
+                    }).addTo(beatMap);
+                    polygon.on('click', () => toggleBeatSelection(feature.properties.beat, polygon));
+                    beatLayers[feature.properties.beat] = polygon;
+                    // Add label
+                    const center = polygon.getBounds().getCenter();
+                    L.marker(center, {
+                        icon: L.divIcon({
+                            className: 'beat-label',
+                            html: feature.properties.beat,
+                            iconSize: null,
+                            iconAnchor: [15, 0]
+                        })
+                    }).addTo(beatMap);
+                }
+            });
+            // Pre-select beats from input
+            const currentBeats = dispatchBeatInput.value.split(',').map(b => b.trim()).filter(b => b);
+            selectedBeats = new Set(currentBeats);
+            Object.entries(beatLayers).forEach(([beat, layer]) => {
+                if (selectedBeats.has(beat)) {
+                    layer.setStyle({ fillColor: '#00ff00', fillOpacity: 0.4 });
+                } else {
+                    layer.setStyle({ fillColor: '#3388ff', fillOpacity: 0.2 });
+                }
+            });
+        }
+        function toggleBeatSelection(beat, polygon) {
+            if (selectedBeats.has(beat)) {
+                selectedBeats.delete(beat);
+                polygon.setStyle({ fillColor: '#3388ff', fillOpacity: 0.2 });
+            } else {
+                selectedBeats.add(beat);
+                polygon.setStyle({ fillColor: '#00ff00', fillOpacity: 0.4 });
+            }
+        }
+        document.getElementById('applyBeatSelection').onclick = function() {
+            dispatchBeatInput.value = Array.from(selectedBeats).sort().join(', ');
+            closeBeatMapModal();
+        };
+
     </script>
 </body>
