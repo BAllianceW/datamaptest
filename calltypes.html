@@ -85,7 +85,6 @@
             transform: rotate(90deg);
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
     <div class="button-container">
@@ -98,68 +97,61 @@
     <div id="accordion" class="accordion"></div>
 
     <script>
-        async function loadCallTypes() {
-            try {
-                const response = await fetch('Data/2025B1PriorityCallTypes.csv');
-                const csvText = await response.text();
-                // Use PapaParse to parse the CSV
-                const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
-                const priorities = parsed.meta.fields;
-                const callTypesByPriority = {};
-                priorities.forEach(priority => callTypesByPriority[priority] = []);
-                parsed.data.forEach(row => {
-                    priorities.forEach(priority => {
-                        const callType = row[priority] && row[priority].trim();
-                        if (callType) callTypesByPriority[priority].push(callType);
-                    });
+        function buildAccordion(callData) {
+            // Group call types by priority
+            const callTypesByPriority = {};
+            callData.forEach(call => {
+                const priority = call.priority || 'Unknown';
+                const type = call.final_call_type || call.initial_call_type || 'Unknown';
+                if (!callTypesByPriority[priority]) callTypesByPriority[priority] = new Set();
+                callTypesByPriority[priority].add(type);
+            });
+
+            // Sort priorities
+            const priorities = Object.keys(callTypesByPriority).sort((a, b) => a - b);
+
+            // Build accordion HTML
+            const accordion = document.getElementById('accordion');
+            accordion.innerHTML = '';
+            priorities.forEach(priority => {
+                const item = document.createElement('div');
+                item.className = 'accordion-item';
+
+                const header = document.createElement('div');
+                header.className = 'accordion-header';
+                header.innerHTML = `<span class="priority-label">${priority}</span> <span class="expand-icon">▶</span>`;
+                header.onclick = function() {
+                    item.classList.toggle('open');
+                    const content = item.querySelector('.accordion-content');
+                    content.style.display = content.style.display === 'block' ? 'none' : 'block';
+                };
+
+                const content = document.createElement('div');
+                content.className = 'accordion-content';
+                const ul = document.createElement('ul');
+                ul.className = 'call-type-list';
+                Array.from(callTypesByPriority[priority]).sort().forEach(type => {
+                    const li = document.createElement('li');
+                    li.textContent = type;
+                    ul.appendChild(li);
                 });
+                content.appendChild(ul);
 
-                // Sort call types alphabetically for each priority
-                priorities.forEach(priority => {
-                    callTypesByPriority[priority].sort((a, b) => a.localeCompare(b));
-                });
-
-                // Build accordion
-                const accordion = document.getElementById('accordion');
-                priorities.forEach(priority => {
-                    const item = document.createElement('div');
-                    item.className = 'accordion-item';
-
-                    const header = document.createElement('div');
-                    header.className = 'accordion-header';
-                    header.innerHTML = `<span class="priority-label">${priority}</span> <span class="expand-icon">▶</span>`;
-                    header.onclick = function() {
-                        item.classList.toggle('open');
-                        const content = item.querySelector('.accordion-content');
-                        if (content.style.display === 'block') {
-                            content.style.display = 'none';
-                        } else {
-                            content.style.display = 'block';
-                        }
-                    };
-
-                    const content = document.createElement('div');
-                    content.className = 'accordion-content';
-                    const ul = document.createElement('ul');
-                    ul.className = 'call-type-list';
-                    callTypesByPriority[priority].forEach(type => {
-                        const li = document.createElement('li');
-                        li.textContent = type;
-                        ul.appendChild(li);
-                    });
-                    content.appendChild(ul);
-
-                    item.appendChild(header);
-                    item.appendChild(content);
-                    accordion.appendChild(item);
-                });
-            } catch (error) {
-                console.error('Error loading call types:', error);
-                document.getElementById('accordion').innerHTML = 
-                    '<p style="color: red;">Error loading call types data. Please try again later.</p>';
-            }
+                item.appendChild(header);
+                item.appendChild(content);
+                accordion.appendChild(item);
+            });
         }
-        window.onload = loadCallTypes;
+
+        window.onload = function() {
+            const callData = JSON.parse(localStorage.getItem('latestCallData') || '[]');
+            if (!callData.length) {
+                document.getElementById('accordion').innerHTML = 
+                    '<p style="color: red;">No call data found. Please run a query first.</p>';
+            } else {
+                buildAccordion(callData);
+            }
+        };
     </script>
 </body>
 </html> 

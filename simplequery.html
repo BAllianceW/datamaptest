@@ -278,6 +278,7 @@
         <button onclick="fetchData()">Get Response Times</button>
         <button class="show-query-btn" onclick="toggleQuery()">Show API Query</button>
         <a href="index.html" class="custom-button">Back to Map</a>
+        <a href="calltypes.html" class="custom-button call-types-button">View Call Types by Priority</a>
     </div>
     
     <div id="query-display" class="query-info"></div>
@@ -298,7 +299,6 @@
 
     <div class="button-container">
         <a href="index.html" class="custom-button">Back to Map</a>
-        <a href="calltypes.html" class="custom-button call-types-button">View Call Types by Priority</a>
     </div>
 
     <script>
@@ -341,6 +341,7 @@
             resultsDiv.innerHTML = '<div class="loading">Calculating query size...</div>';
             
             let beatStats = {};
+            let allData = [];
 
             // Get a rough count first
             let totalCount = 0;
@@ -408,7 +409,7 @@
                 try {
                     for (let beat of dispatchBeats) {
                         let offset = 0;
-                        let allData = [];
+                        let beatData = [];
                         let priorityGroups = {};
                         let specialGroups = {
                             ONVIEW: {},
@@ -456,7 +457,8 @@
                                 console.log(`Received ${data?.length || 0} records for beat ${beat} at offset ${offset}`);
                                 
                                 if (!data || data.length === 0) break;
-                                allData = allData.concat(data);
+                                beatData = beatData.concat(data); // accumulate for this beat
+                                allData = allData.concat(data);   // accumulate for all beats
                                 offset += 1000;
 
                                 totalProcessed += data.length;
@@ -472,12 +474,23 @@
                         }
 
                         // Process data for this beat
-                        beatStats[beat] = processData(allData, beat);
+                        beatStats[beat] = processData(beatData, beat);
                     }
                 } finally {
                     clearInterval(progressInterval);
                     // Show final processing message
                     resultsDiv.innerHTML = '<div class="loading">Processing results...</div>';
+                    // Store allData in localStorage
+                    console.log("About to save allData to localStorage. allData length:", allData.length, allData);
+                    try {
+                        localStorage.setItem('latestCallData', JSON.stringify(allData));
+                        const stored = localStorage.getItem('latestCallData');
+                        const sizeKB = stored ? (stored.length / 1024).toFixed(2) : 0;
+                        const sizeMB = stored ? (stored.length / (1024*1024)).toFixed(2) : 0;
+                        console.log(`localStorage.latestCallData: ${allData.length} records, ~${sizeKB} KB (~${sizeMB} MB)`);
+                    } catch (e) {
+                        console.error('Failed to store call data in localStorage:', e);
+                    }
                     displayResults(beatStats);
                 }
             } else {
@@ -1355,6 +1368,27 @@
             
             debugContent.innerHTML = html;
         }
+
+        window.onload = function() {
+            // Try to load previous results from localStorage
+            const previousData = JSON.parse(localStorage.getItem('latestCallData') || '[]');
+            if (previousData.length) {
+                // Reconstruct beatStats from previousData
+                // Group by beat
+                let beatStats = {};
+                previousData.forEach(record => {
+                    const beat = record.dispatch_beat || 'Unknown';
+                    if (!beatStats[beat]) beatStats[beat] = [];
+                    beatStats[beat].push(record);
+                });
+                // Process each beat's data
+                let processedStats = {};
+                for (const beat in beatStats) {
+                    processedStats[beat] = processData(beatStats[beat], beat);
+                }
+                displayResults(processedStats);
+            }
+        };
     </script>
 </body>
 </html>

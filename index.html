@@ -9,19 +9,25 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="normalize.css">
     <style>
-        body {
+        html, body {
+            height: 100%;
             margin: 0;
             padding: 0;
+        }
+        body {
+            height: 100%;
+            box-sizing: border-box;
         }
         /* Flex container for filters and button */
         .top-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 4px 10px; /* Reduce vertical padding */
+            padding: 0 10px;
             background-color: #f8f9fa;
             border-bottom: 2px solid #000000;
-            min-height: 36px;
+            height: 56px;
+            min-height: 56px;
         }
         /* Filters container */
         .filters {
@@ -38,18 +44,25 @@
         }
         #map-container {
             display: flex;
-            width: 100%;
-            height: calc(100vh - 115px); /* Tweak for perfect fit */
+            width: 100vw;
+            /* outline: 3px solid red; */
+            height: calc(100vh - 62px); /* Slightly less than full viewport to avoid scroll */
             min-height: 300px;
             max-height: 100vh;
             transform: translateZ(0);
+        }
+        @media (max-width: 700px) {
+            #map-container { flex-direction: column; }
+            #sidebar { max-width: 100vw; border-radius: 0; }
         }
         #map {
             flex: 3;
             height: 100%;
             min-height: 300px;
             max-height: 100vh;
+            width: 100%;
             transform: translateZ(0);
+            /* outline: 2px dashed blue; */
         }
         #sidebar {
             flex: 1;
@@ -62,6 +75,7 @@
             border-top: 2px solid #000000; border-top-right-radius: 10%;
             border-bottom: 2px solid #000000; border-bottom-right-radius: 10%;
             background-color: #f8f9fa;
+            /* outline: 2px dashed green; */
         }
         #sidebar h3 {
             text-align: center; /* Center the text */
@@ -101,6 +115,62 @@
             border-color: #002244;
         }
 
+        /* Map Modal Styles (from simplequery.html) */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 800px;
+            border-radius: 4px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: black;
+        }
+        #beatMap {
+            height: 600px;
+            width: 100%;
+            margin: 10px 0;
+        }
+        .map-button {
+            margin-left: 10px;
+            padding: 5px 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .beat-label {
+            background: none;
+            border: none;
+            box-shadow: none;
+            font-weight: bold;
+            text-shadow: 
+                -1px -1px 0 #fff,
+                1px -1px 0 #fff,
+                -1px 1px 0 #fff,
+                1px 1px 0 #fff;
+            font-size: 14px;
+            color: #000;
+        }
         /* Center the button */
         .button-container {
             text-align: right;
@@ -167,15 +237,14 @@
         .sidebar-el.crime {
             border-left: 4px solid #dc3545;
         }
-        h1 {
-            margin: 8px 0 8px 0; /* Reduce top and bottom margin */
-            font-size: 2em;
-        }
+        h1 { display: none; }
     </style>
 </head>
 <body>
     <div class="top-bar">
-        <div class="filters">
+        <div style="display: flex; align-items: center;">
+            <span style="font-size: 2em; font-weight: bold; margin-right: 24px;">Public Data Map</span>
+            <div class="filters">
             <!-- Existing filters -->
             <label for="startDate">Start Date:</label>
             <input type="date" id="startDate">
@@ -183,24 +252,40 @@
             <input type="date" id="endDate">
             <label for="dispatchBeat">Dispatch Beats:</label>
             <input type="text" id="dispatchBeat" placeholder="e.g., B1, C2">
+            <button class="map-button" onclick="openMapSelector()">Select Dispatch Beat(s)<br>from Map</button>
     
             <!-- Add Fetch Data Button -->
             <button id="fetchDataButton" class="custom-button">Fetch Data</button>
             <button id="fitDataButton">Show All Points</button>
+            </div>
         </div>
     
         <!-- Lookup button stays right-aligned -->
         <a href="simplequery.html" class="custom-button">Response Time Lookup</a>
     </div>
 
-    <h1>Public Data Map</h1>
     <div id="map-container">
         <div id="map"></div>
         <div id="sidebar">
             <h3>Visible Data Points</h3>
+            <div id="sidebarCounts" style="padding: 6px 0 6px 0; text-align: center; font-weight: bold; font-size: 1.1em;"></div>
             <div id="results"></div>
         </div>
     </div>
+
+    <!-- Add Map Modal (from simplequery.html, fixed for unique id) -->
+    <div id="mapModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeMapSelector()">&times;</span>
+            <h3>Select Beats from Map</h3>
+            <div id="beatMap"></div>
+            <div style="margin-top: 10px; text-align: right;">
+                <button onclick="applyBeatSelection()" style="margin-right: 10px;">Apply Selection</button>
+                <button onclick="closeMapSelector()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
     <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
@@ -436,7 +521,7 @@
 
             // Clear sidebar
             const sidebarContent = document.getElementById("sidebar");
-            sidebarContent.innerHTML = '<h3>Visible Data Points</h3><div id="results"></div>';
+            sidebarContent.innerHTML = '<h3>Visible Data Points</h3><div id="sidebarCounts" style="padding: 6px 0 6px 0; text-align: center; font-weight: bold; font-size: 1.1em;"></div><div id="results"></div>';
 
             // Show loading message in sidebar
             const resultsDiv = document.getElementById("results");
@@ -644,12 +729,20 @@
                 fitDataToView();
 
                 // Show data counts with valid coordinates info
-                resultsDiv.innerHTML = `<div style="padding: 10px; background-color: #e9ecef; margin-bottom: 10px; border-radius: 4px;">
-                    Found ${allCallsData.length} calls (${validCallsCount} with valid coordinates) and ${allCrimesData.length} crime reports (${validCrimesCount} with valid coordinates)
-                </div>` + resultsDiv.innerHTML;
+                const sidebarCounts = document.getElementById('sidebarCounts');
+                if (sidebarCounts) {
+                    sidebarCounts.innerHTML = `
+                        <span style="color: #007bff;">Calls: ${validCallsCount}</span> |
+                        <span style="color: #dc3545;">Crimes: ${validCrimesCount}</span>
+                    `;
+                }
 
                 // After processing all data, update category filters
                 updateCategoryFilters([...allCallsData, ...allCrimesData]);
+
+                // Store globally for sidebar count logic
+                window.allCallsData = allCallsData;
+                window.allCrimesData = allCrimesData;
 
             } catch (error) {
                 console.error("Error fetching data:", error);
@@ -841,6 +934,63 @@
 
             // --- Sidebar Filter Buttons (Calls, Crimes, All) ---
             addSidebarFilterButtons();
+
+            // Update counts to include all points within map bounds, even if clustered
+            const sidebarCounts = document.getElementById('sidebarCounts');
+            if (sidebarCounts) {
+                let callsInBounds = 0;
+                let crimesInBounds = 0;
+                const bounds = map.getBounds();
+                // Count calls
+                if (window.allCallsData && Array.isArray(window.allCallsData)) {
+                    window.allCallsData.forEach(call => {
+                        let lat, lng;
+                        if (call.location) {
+                            try {
+                                if (typeof call.location === 'string') {
+                                    const locationObj = JSON.parse(call.location);
+                                    if (locationObj.type === 'Point' && Array.isArray(locationObj.coordinates)) {
+                                        lng = parseFloat(locationObj.coordinates[0]);
+                                        lat = parseFloat(locationObj.coordinates[1]);
+                                    }
+                                } else if (call.location.type === 'Point' && Array.isArray(call.location.coordinates)) {
+                                    lng = parseFloat(call.location.coordinates[0]);
+                                    lat = parseFloat(call.location.coordinates[1]);
+                                }
+                            } catch (e) {}
+                        }
+                        if (!lat || !lng) {
+                            lat = parseFloat(call.dispatch_latitude);
+                            lng = parseFloat(call.dispatch_longitude);
+                        }
+                        if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0
+                            && lat >= 47.4 && lat <= 47.8
+                            && lng >= -122.5 && lng <= -122.2) {
+                            if (bounds.contains([lat, lng])) {
+                                callsInBounds++;
+                            }
+                        }
+                    });
+                }
+                // Count crimes
+                if (window.allCrimesData && Array.isArray(window.allCrimesData)) {
+                    window.allCrimesData.forEach(crime => {
+                        const lat = parseFloat(crime.latitude);
+                        const lng = parseFloat(crime.longitude);
+                        if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0
+                            && lat >= 47.4 && lat <= 47.8
+                            && lng >= -122.5 && lng <= -122.2) {
+                            if (bounds.contains([lat, lng])) {
+                                crimesInBounds++;
+                            }
+                        }
+                    });
+                }
+                sidebarCounts.innerHTML = `
+                    <span style="color: #007bff;">Calls: ${callsInBounds}</span> |
+                    <span style="color: #dc3545;">Crimes: ${crimesInBounds}</span>
+                `;
+            }
         }
 
         function formatDate(dateString) {
@@ -916,7 +1066,12 @@
                         <span style="font-size: 0.8em; color: #666;">${formatDate(call.cad_event_original_time_queued)}</span>
                     </div>
                     <div style="margin: 5px 0;">
-                        <b class="call-type">${call.final_call_type || call.initial_call_type || "Unknown Call"}</b>
+                        <div style="font-size: 1.1em; font-weight: bold; color: #222;">
+                            <u>Initial:</u> ${call.initial_call_type || "Unknown Initial Type"}
+                        </div>
+                        <div style="font-size: 0.98em; color: #444;">
+                            <u>Final:</u> ${call.final_call_type || "Unknown Final Type"}
+                        </div>
                         <span style="float: right; color: #007bff;">Priority ${call.priority || "N/A"}</span>
                     </div>
                     <div style="font-size: 0.9em; color: #666;">
@@ -1025,5 +1180,144 @@
             }
         });
 
+        // Map Selection Functionality
+        let beatMap = null;
+        let beatMapLayers = {};
+        let selectedBeats = new Set();
+
+        function openMapSelector() {
+            const modal = document.getElementById('mapModal');
+            if (!modal) return;
+            modal.style.display = 'block';
+            setTimeout(() => {
+                initBeatMap();
+                if (beatMap) beatMap.invalidateSize();
+            }, 100);
+            // Initialize selected beats from input
+            const currentBeats = document.getElementById('dispatchBeat').value
+                .split(',')
+                .map(b => b.trim())
+                .filter(b => b);
+            selectedBeats = new Set(currentBeats);
+            // Update map selections
+            Object.entries(beatMapLayers).forEach(([beat, layer]) => {
+                if (selectedBeats.has(beat)) {
+                    layer.setStyle({ fillColor: '#00ff00', fillOpacity: 0.4 });
+                } else {
+                    layer.setStyle({ fillColor: '#3388ff', fillOpacity: 0.2 });
+                }
+            });
+        }
+
+        function closeMapSelector() {
+            const modal = document.getElementById('mapModal');
+            modal.style.display = 'none';
+        }
+
+        function toggleBeatSelection(beat, polygon) {
+            if (selectedBeats.has(beat)) {
+                selectedBeats.delete(beat);
+                polygon.setStyle({ fillColor: '#3388ff', fillOpacity: 0.2 });
+            } else {
+                selectedBeats.add(beat);
+                polygon.setStyle({ fillColor: '#00ff00', fillOpacity: 0.4 });
+            }
+        }
+
+        function applyBeatSelection() {
+            const dispatchBeatInput = document.getElementById('dispatchBeat');
+            dispatchBeatInput.value = Array.from(selectedBeats).sort().join(', ');
+            closeMapSelector();
+        }
+
+        async function initBeatMap() {
+            if (!beatMap) {
+                const mapContainer = document.getElementById('beatMap');
+                if (!mapContainer) return;
+                beatMap = L.map('beatMap').setView([47.6062, -122.3321], 11);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(beatMap);
+
+                // Try to load GeoJSON from file, fallback to minimal sample
+                let data;
+                try {
+                    const response = await fetch('beatmap.geojson');
+                    if (!response.ok) throw new Error();
+                    data = await response.json();
+                } catch {
+                    data = {
+                        "type": "FeatureCollection",
+                        "features": [
+                            {
+                                "type": "Feature",
+                                "properties": { "beat": "B1" },
+                                "geometry": {
+                                    "type": "Polygon",
+                                    "coordinates": [[
+                                        [-122.33, 47.62],
+                                        [-122.33, 47.63],
+                                        [-122.32, 47.63],
+                                        [-122.32, 47.62],
+                                        [-122.33, 47.62]
+                                    ]]
+                                }
+                            },
+                            {
+                                "type": "Feature",
+                                "properties": { "beat": "B2" },
+                                "geometry": {
+                                    "type": "Polygon",
+                                    "coordinates": [[
+                                        [-122.35, 47.64],
+                                        [-122.35, 47.65],
+                                        [-122.34, 47.65],
+                                        [-122.34, 47.64],
+                                        [-122.35, 47.64]
+                                    ]]
+                                }
+                            }
+                        ]
+                    };
+                }
+
+                data.features.forEach(feature => {
+                    if (feature.geometry && feature.properties && feature.properties.beat) {
+                        let latLngs;
+                        const coordinates = feature.geometry.coordinates;
+                        if (coordinates[0] && Array.isArray(coordinates[0]) && coordinates[0].length > 0) {
+                            if (feature.geometry.type === "MultiPolygon") {
+                                latLngs = coordinates.map(polygon => 
+                                    polygon[0].map(coord => [coord[1], coord[0]])
+                                );
+                            } else if (coordinates[0][0] && Array.isArray(coordinates[0][0]) && coordinates[0][0].length === 2) {
+                                latLngs = [coordinates[0].map(coord => [coord[1], coord[0]])];
+                            }
+                        }
+                        const polygon = L.polygon(latLngs, {
+                            color: '#3388ff',
+                            weight: 2,
+                            fillOpacity: 0.2
+                        }).addTo(beatMap);
+                        polygon.on('click', () => toggleBeatSelection(feature.properties.beat, polygon));
+                        beatMapLayers[feature.properties.beat] = polygon;
+                        // Add beat label at center
+                        const center = polygon.getBounds().getCenter();
+                        L.marker(center, {
+                            icon: L.divIcon({
+                                className: 'beat-label',
+                                html: feature.properties.beat,
+                                iconSize: null,
+                                iconAnchor: [15, 0]
+                            })
+                        }).addTo(beatMap);
+                    }
+                });
+            } else {
+                beatMap.invalidateSize();
+            }
+        }
+
     </script>
 </body>
+</html>
