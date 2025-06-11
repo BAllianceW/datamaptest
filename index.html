@@ -298,6 +298,40 @@
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
+        // Add BIA Boundary Layer
+        let biaBoundaryLayer = null;
+        fetch('Data/Boundary/BIA_Renewal_Boundary.geojson')
+            .then(response => response.json())
+            .then(data => {
+                biaBoundaryLayer = L.geoJSON(data, {
+                    style: function(feature) {
+                        return {
+                            color: feature.properties.Name === "Primary Service Area" ? '#3388ff' : '#17bd40',
+                            weight: 2,
+                            fillOpacity: 0.0,
+                            fillColor: feature.properties.Name === "Primary Service Area" ? '#3388ff' : '#17bd40',
+                            pointerEvents: 'none' // Prevent pointer events
+                        };
+                    },
+                    onEachFeature: function(feature, layer) {
+                        // Remove popup and pointer events
+                        layer.off('click');
+                        layer.off('mouseover');
+                        layer.off('mouseout');
+                        if (layer._path) {
+                            layer._path.style.pointerEvents = 'none';
+                        }
+                    }
+                }).addTo(map);
+                
+                // Add to layer control
+                overlayMaps["BIA Boundary"] = biaBoundaryLayer;
+                if (map.controls && map.controls[0]) {
+                    map.controls[0].addOverlay(biaBoundaryLayer, "BIA Boundary");
+                }
+            })
+            .catch(error => console.error('Error loading BIA boundary:', error));
+
         // API Configuration
         const CALLS_DATASET_ID = "33kz-ixgy";
         const CRIMES_DATASET_ID = "tazs-3rd5";
@@ -312,8 +346,8 @@
         let crimeClusters = L.markerClusterGroup().addTo(map);
 
         // create Heatmap layers
-        let callHeat = L.heatLayer([], { radius: 35, blur: 50 });
-        let crimeHeat = L.heatLayer([], { radius: 35, blur: 50 });
+        let callHeat = L.heatLayer([], { radius: 40, blur: 50});
+        let crimeHeat = L.heatLayer([], { radius: 35, blur: 50});
 
         // Add styles for category filters
         const categoryStyles = document.createElement('style');
@@ -767,6 +801,23 @@
                 crimeHeatPoints.push([marker.getLatLng().lat, marker.getLatLng().lng]);
             });
 
+            // Debug: Log counts and sample coordinates
+            console.log('Heatmap Debug:');
+            console.log('Call Heatmap Points:', callHeatPoints.length, callHeatPoints.slice(0, 10));
+            console.log('Crime Heatmap Points:', crimeHeatPoints.length, crimeHeatPoints.slice(0, 10));
+
+            // Log cluster counts for comparison
+            let callClusterCount = 0;
+            callClusters.eachLayer(() => callClusterCount++);
+            let crimeClusterCount = 0;
+            crimeClusters.eachLayer(() => crimeClusterCount++);
+            console.log('Call Cluster Count:', callClusterCount);
+            console.log('Crime Cluster Count:', crimeClusterCount);
+
+            // Log current zoom and heatmap settings
+            console.log('Map Zoom Level:', map.getZoom());
+            console.log('Call Heatmap Radius:', callHeat.options.radius, 'Blur:', callHeat.options.blur);
+
             if (callHeat._map) {
                 callHeat.setLatLngs(callHeatPoints);
             }
@@ -926,10 +977,38 @@
             const resultsDiv = document.getElementById("results");
             resultsDiv.innerHTML = ''; // Clear existing markers
 
+            // Collect all visible markers
+            let visibleMarkers = [];
             map.eachLayer(function (layer) {
                 if (layer instanceof L.CircleMarker && map.getBounds().contains(layer.getLatLng())) {
-                    createSidebarElement(layer);
+                    visibleMarkers.push(layer);
                 }
+            });
+
+            // Sort markers by CAD number or report number
+            visibleMarkers.sort((a, b) => {
+                const aIsCall = a.getPopup().getContent().includes("911 Call");
+                const bIsCall = b.getPopup().getContent().includes("911 Call");
+                
+                if (aIsCall && bIsCall) {
+                    // Both are calls, sort by CAD number
+                    const aCad = a.callData?.cad_event_number || '';
+                    const bCad = b.callData?.cad_event_number || '';
+                    return aCad.localeCompare(bCad);
+                } else if (!aIsCall && !bIsCall) {
+                    // Both are crimes, sort by report number
+                    const aReport = a.crimeData?.report_number || '';
+                    const bReport = b.crimeData?.report_number || '';
+                    return aReport.localeCompare(bReport);
+                } else {
+                    // One is call, one is crime - calls come first
+                    return aIsCall ? -1 : 1;
+                }
+            });
+
+            // Create sidebar elements in sorted order
+            visibleMarkers.forEach(marker => {
+                createSidebarElement(marker);
             });
 
             // --- Sidebar Filter Buttons (Calls, Crimes, All) ---
@@ -1317,6 +1396,113 @@
                 beatMap.invalidateSize();
             }
         }
+
+        // Modify the response time lookup link to include data
+        document.querySelector('a[href="simplequery.html"]').addEventListener('click', function(e) {
+            e.preventDefault();
+            const currentData = {
+                calls: window.allCallsData || [],
+                crimes: window.allCrimesData || [],
+                filters: {
+                    startDate: document.getElementById("startDate").value,
+                    endDate: document.getElementById("endDate").value,
+                    beat: document.getElementById("dispatchBeat").value.trim()
+                }
+            };
+            // Store data in sessionStorage
+            sessionStorage.setItem('mapData', JSON.stringify(currentData));
+            // Navigate to simplequery.html
+            window.location.href = this.href;
+        });
+
+        const HEATMAP_MAX_ZOOM = 17;
+        let callHeatWasEnabled = false;
+        let crimeHeatWasEnabled = false;
+
+        // Helper: is the heatmap enabled in the layer control?
+        function isHeatmapLayerEnabled(layerName) {
+            const checkboxes = document.querySelectorAll('input.leaflet-control-layers-selector');
+            for (const checkbox of checkboxes) {
+                const label = checkbox.parentElement.textContent || "";
+                if (label.includes(layerName)) {
+                    return checkbox.checked;
+                }
+            }
+            return false;
+        }
+
+        map.on('zoomend', function() {
+            const currentZoom = map.getZoom();
+            // --- 911 Calls Heatmap ---
+            if (currentZoom > HEATMAP_MAX_ZOOM) {
+                if (map.hasLayer(callHeat)) {
+                    map.removeLayer(callHeat);
+                    callHeatWasEnabled = true;
+                } else {
+                    callHeatWasEnabled = false;
+                }
+            } else {
+                if (callHeatWasEnabled || isHeatmapLayerEnabled("911 Calls Heatmap")) {
+                    if (!map.hasLayer(callHeat)) {
+                        map.addLayer(callHeat);
+                    }
+                }
+            }
+            // --- Crime Reports Heatmap ---
+            if (currentZoom > HEATMAP_MAX_ZOOM) {
+                if (map.hasLayer(crimeHeat)) {
+                    map.removeLayer(crimeHeat);
+                    crimeHeatWasEnabled = true;
+                } else {
+                    crimeHeatWasEnabled = false;
+                }
+            } else {
+                if (crimeHeatWasEnabled || isHeatmapLayerEnabled("Crime Reports Heatmap")) {
+                    if (!map.hasLayer(crimeHeat)) {
+                        map.addLayer(crimeHeat);
+                    }
+                }
+            }
+        });
+
+        // On page load, check for mapData in sessionStorage and reload if present, else fallback to localStorage.latestCallData
+        window.addEventListener('DOMContentLoaded', function() {
+            let mapData = sessionStorage.getItem('mapData');
+            if (!mapData) {
+                // Fallback to localStorage if no session data
+                mapData = localStorage.getItem('latestCallData');
+                if (mapData) {
+                    try {
+                        // Try to parse as an array of calls (legacy localStorage)
+                        const parsed = JSON.parse(mapData);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            // Try to infer filters from the first record
+                            const first = parsed[0];
+                            const startDate = first.cad_event_original_time_queued ? first.cad_event_original_time_queued.split('T')[0] : '';
+                            const endDate = parsed[parsed.length-1].cad_event_original_time_queued ? parsed[parsed.length-1].cad_event_original_time_queued.split('T')[0] : '';
+                            document.getElementById('startDate').value = startDate;
+                            document.getElementById('endDate').value = endDate;
+                            document.getElementById('dispatchBeat').value = first.dispatch_beat || '';
+                            fetchAndProcessData(startDate, endDate, first.dispatch_beat || '');
+                        }
+                    } catch (e) {
+                        console.error('Error parsing latestCallData from localStorage:', e);
+                    }
+                }
+                return;
+            }
+            try {
+                const parsed = JSON.parse(mapData);
+                if (parsed.filters && parsed.filters.startDate && parsed.filters.endDate) {
+                    document.getElementById('startDate').value = parsed.filters.startDate;
+                    document.getElementById('endDate').value = parsed.filters.endDate;
+                    document.getElementById('dispatchBeat').value = parsed.filters.beat || '';
+                    fetchAndProcessData(parsed.filters.startDate, parsed.filters.endDate, parsed.filters.beat || '');
+                }
+            } catch (e) {
+                console.error('Error parsing mapData from sessionStorage:', e);
+            }
+        });
 
     </script>
 </body>

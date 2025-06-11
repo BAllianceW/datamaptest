@@ -491,6 +491,15 @@
                     } catch (e) {
                         console.error('Failed to store call data in localStorage:', e);
                     }
+                    // Save to sessionStorage
+                    sessionStorage.setItem('mapData', JSON.stringify({
+                        calls: allData,
+                        filters: {
+                            startDate,
+                            endDate,
+                            beat: dispatchBeats.join(', ')
+                        }
+                    }));
                     displayResults(beatStats);
                 }
             } else {
@@ -1370,11 +1379,47 @@
         }
 
         window.onload = function() {
-            // Try to load previous results from localStorage
+            // Try to load data from sessionStorage first (shared from index page)
+            const sharedData = sessionStorage.getItem('mapData');
+            if (sharedData) {
+                try {
+                    const data = JSON.parse(sharedData);
+                    if (data.calls && data.calls.length > 0) {
+                        // Pre-fill the form with shared filters
+                        if (data.filters) {
+                            document.getElementById("startDate").value = data.filters.startDate || '';
+                            document.getElementById("endDate").value = data.filters.endDate || '';
+                            document.getElementById("dispatchBeat").value = data.filters.beat || '';
+                        }
+                        
+                        // Process the shared data
+                        let beatStats = {};
+                        data.calls.forEach(record => {
+                            const beat = record.dispatch_beat || 'Unknown';
+                            if (!beatStats[beat]) beatStats[beat] = [];
+                            beatStats[beat].push(record);
+                        });
+                        
+                        // Process each beat's data
+                        let processedStats = {};
+                        for (const beat in beatStats) {
+                            processedStats[beat] = processData(beatStats[beat], beat);
+                        }
+                        
+                        // Display results
+                        displayResults(processedStats);
+                        
+                        // DO NOT REMOVE sessionStorage.mapData HERE!
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Error processing shared data:', error);
+                }
+            }
+            // Fallback to localStorage if no shared data
             const previousData = JSON.parse(localStorage.getItem('latestCallData') || '[]');
             if (previousData.length) {
                 // Reconstruct beatStats from previousData
-                // Group by beat
                 let beatStats = {};
                 previousData.forEach(record => {
                     const beat = record.dispatch_beat || 'Unknown';
@@ -1388,6 +1433,9 @@
                 }
                 displayResults(processedStats);
             }
+
+            // Initialize map with BIA boundary
+            initMap();
         };
     </script>
 </body>
