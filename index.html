@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Public Data Map</title>
+    <link rel="icon" type="image/png" href="ba-badge.png">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
@@ -545,6 +546,31 @@
             }
         }
 
+        // Initialize the layer control once
+        let layerControl = null;
+        let overlayMaps = {
+            "911 Calls Points": callLayer,
+            "Crime Reports Points": crimeLayer,
+            "911 Calls Clusters": callClusters,
+            "Crime Reports Clusters": crimeClusters,
+            "911 Calls Heatmap": callHeat,
+            "Crime Reports Heatmap": crimeHeat
+        };
+        function initLayerControl() {
+            if (layerControl) {
+                map.removeControl(layerControl);
+            }
+            layerControl = L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map);
+        }
+        // Call this once during initial setup
+        initLayerControl();
+
+        // Track layer visibility changes
+        map.on('overlayadd overlayremove', function(e) {
+            const layerName = e.name;
+            layerStates[layerName] = e.type === 'overlayadd';
+        });
+
         // Function to fetch and process data
         async function fetchAndProcessData(startDate, endDate, beat) {
             // Clear existing layers
@@ -656,7 +682,7 @@
                     
                     if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0 
                         && lat >= 47.4 && lat <= 47.8  // Seattle latitude bounds
-                        && lng >= -122.5 && lng <= -122.2) { // Seattle longitude bounds
+                        && lng >= -122.5 && lng <= -122.2) {
                         validCallsCount++;
                         console.log(`Valid coordinates found for call ${index}:`, { lat, lng });
                         const marker = L.circleMarker([lat, lng], {
@@ -826,7 +852,7 @@
             }
         }
 
-        // Remove invalid event listener removals
+        // Modify the fetch data button click handler
         document.getElementById("fetchDataButton").addEventListener("click", function() {
             const startDate = document.getElementById("startDate").value;
             const endDate = document.getElementById("endDate").value;
@@ -837,6 +863,23 @@
                 return;
             }
 
+            // Clear any existing cache before making a new query
+            sessionStorage.removeItem('mapData');
+            localStorage.removeItem('latestCallData');
+
+            // Only clear data from layers, do not add/remove layers
+            callClusters.clearLayers();
+            crimeClusters.clearLayers();
+            callLayer.clearLayers();
+            crimeLayer.clearLayers();
+            callHeat.setLatLngs([]);
+            crimeHeat.setLatLngs([]);
+
+            // Clear sidebar
+            const sidebarContent = document.getElementById("sidebar");
+            sidebarContent.innerHTML = '<h3>Visible Data Points</h3><div id="sidebarCounts" style="padding: 6px 0 6px 0; text-align: center; font-weight: bold; font-size: 1.1em;"></div><div id="results"></div>';
+
+            // Make the new query
             fetchAndProcessData(startDate, endDate, beat);
         });
 
@@ -850,17 +893,6 @@
                 fetchAndProcessData(startDate, endDate, beat);
             }
         }
-
-        // Add Layer Controls
-        let overlayMaps = {
-            "911 Calls Points": callLayer,
-            "Crime Reports Points": crimeLayer,
-            "911 Calls Clusters": callClusters,
-            "Crime Reports Clusters": crimeClusters,
-            "911 Calls Heatmap": callHeat,
-            "Crime Reports Heatmap": crimeHeat
-        };
-        L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map);
 
         // Populate year dropdown
         function populateYearSelect() {
@@ -1407,7 +1439,9 @@
                     startDate: document.getElementById("startDate").value,
                     endDate: document.getElementById("endDate").value,
                     beat: document.getElementById("dispatchBeat").value.trim()
-                }
+                },
+                timestamp: Date.now(), // Add timestamp for cache invalidation
+                isReturningFromQuery: false // Flag for navigation state
             };
             // Store data in sessionStorage
             sessionStorage.setItem('mapData', JSON.stringify(currentData));
@@ -1465,7 +1499,7 @@
             }
         });
 
-        // On page load, check for mapData in sessionStorage and reload if present, else fallback to localStorage.latestCallData
+        // On page load, check for mapData in sessionStorage and restore if present
         window.addEventListener('DOMContentLoaded', function() {
             let mapData = sessionStorage.getItem('mapData');
             if (!mapData) {
@@ -1491,18 +1525,208 @@
                 }
                 return;
             }
+
             try {
                 const parsed = JSON.parse(mapData);
                 if (parsed.filters && parsed.filters.startDate && parsed.filters.endDate) {
+                    // Set form values
                     document.getElementById('startDate').value = parsed.filters.startDate;
                     document.getElementById('endDate').value = parsed.filters.endDate;
                     document.getElementById('dispatchBeat').value = parsed.filters.beat || '';
-                    fetchAndProcessData(parsed.filters.startDate, parsed.filters.endDate, parsed.filters.beat || '');
+
+                    // Check if we have cached data and it's not too old (24 hours)
+                    const isCacheValid = parsed.timestamp && (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000);
+                    
+                    if (isCacheValid && parsed.calls && parsed.crimes) {
+                        // Restore from cache
+                        console.log('Restoring data from cache...');
+                        window.allCallsData = parsed.calls;
+                        window.allCrimesData = parsed.crimes;
+                        processCachedData(parsed.calls, parsed.crimes);
+                    } else {
+                        // Fetch fresh data
+                        console.log('Cache invalid or missing, fetching fresh data...');
+                        fetchAndProcessData(parsed.filters.startDate, parsed.filters.endDate, parsed.filters.beat || '');
+                    }
                 }
             } catch (e) {
                 console.error('Error parsing mapData from sessionStorage:', e);
             }
         });
+
+        // Function to process cached data without API calls
+        function processCachedData(calls, crimes) {
+            // Clear existing layers
+            callClusters.clearLayers();
+            crimeClusters.clearLayers();
+            callHeat.setLatLngs([]);
+            crimeHeat.setLatLngs([]);
+
+            // Clear sidebar
+            const sidebarContent = document.getElementById("sidebar");
+            sidebarContent.innerHTML = '<h3>Visible Data Points</h3><div id="sidebarCounts" style="padding: 6px 0 6px 0; text-align: center; font-weight: bold; font-size: 1.1em;"></div><div id="results"></div>';
+
+            // Show loading message in sidebar
+            const resultsDiv = document.getElementById("results");
+            resultsDiv.innerHTML = '<div class="loading">Processing cached data...</div>';
+
+            try {
+                // Process calls data
+                let validCallsCount = 0;
+                calls.forEach((call, index) => {
+                    let lat, lng;
+                    
+                    // Try to get coordinates from location field first
+                    if (call.location) {
+                        try {
+                            if (typeof call.location === 'string') {
+                                const locationObj = JSON.parse(call.location);
+                                if (locationObj.type === 'Point' && Array.isArray(locationObj.coordinates)) {
+                                    lng = parseFloat(locationObj.coordinates[0]);
+                                    lat = parseFloat(locationObj.coordinates[1]);
+                                }
+                            } else if (call.location.type === 'Point' && Array.isArray(call.location.coordinates)) {
+                                lng = parseFloat(call.location.coordinates[0]);
+                                lat = parseFloat(call.location.coordinates[1]);
+                            }
+                        } catch (e) {
+                            console.error(`Error parsing location for call ${index}:`, e);
+                        }
+                    }
+                    
+                    // If location parsing failed, try direct lat/lng fields
+                    if (!lat || !lng) {
+                        lat = parseFloat(call.dispatch_latitude);
+                        lng = parseFloat(call.dispatch_longitude);
+                    }
+                    
+                    // Log the actual values we're trying to parse
+                    console.log(`Call ${index} coordinates:`, { lat, lng, rawLat: call.dispatch_latitude, rawLng: call.dispatch_longitude });
+                    
+                    if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0 
+                        && lat >= 47.4 && lat <= 47.8  // Seattle latitude bounds
+                        && lng >= -122.5 && lng <= -122.2) { // Seattle longitude bounds
+                        validCallsCount++;
+                        console.log(`Valid coordinates found for call ${index}:`, { lat, lng });
+                        const marker = L.circleMarker([lat, lng], {
+                            radius: 6,
+                            fillColor: "blue",
+                            color: "#000",
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        });
+
+                        marker.callData = call;
+                        // 911 Call popup content
+                        let locationField = '';
+                        if (call.hundred_block_location && call.hundred_block_location !== 'REDACTED') {
+                            locationField = `<b>100 Block:</b> ${call.hundred_block_location}<br>`;
+                        }
+                        // Calculate response time (in seconds)
+                        let responseTimeField = '';
+                        if (call.cad_event_original_time_queued && call.cad_event_arrived_time) {
+                            const queued = new Date(call.cad_event_original_time_queued);
+                            const arrived = new Date(call.cad_event_arrived_time);
+                            if (!isNaN(queued) && !isNaN(arrived)) {
+                                const diffSeconds = Math.round((arrived - queued) / 1000);
+                                responseTimeField = `<b>Response Time:</b> ${formatTimeDifference(diffSeconds)}<br>`;
+                            } else {
+                                responseTimeField = `<b>Response Time:</b> N/A<br>`;
+                            }
+                        } else {
+                            responseTimeField = `<b>Response Time:</b> N/A<br>`;
+                        }
+                        const popupContent = `
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span><b>📞 911 Call</b></span>
+                                <span style="font-size: 0.95em; color: #666; font-weight: bold;">CAD#: ${call.cad_event_number || 'N/A'}</span>
+                            </div>
+                            <hr>
+                            <b>Outcome:</b> ${call.cad_event_clearance_description || "N/A"}<br>
+                            <b>Call Method:</b> ${call.call_type || "N/A"}<br>
+                            <b>Initial Call Type:</b> ${call.initial_call_type || "N/A"}<br>
+                            <b>Final Call Type:</b> ${call.final_call_type || "N/A"}<br>
+                            <b>Priority:</b> ${call.priority || "N/A"}<br>
+                            <b>Queued Time:</b> ${formatDate(call.cad_event_original_time_queued) || "N/A"}<br>
+                            <b>Arrival Time:</b> ${formatDate(call.cad_event_arrived_time) || "N/A"}<br>
+                            ${responseTimeField}
+                            ${locationField}
+                            <b>Neighborhood:</b> ${call.dispatch_neighborhood || "N/A"}<br>
+                            <b>Precinct/Sector/Beat:</b> ${call.dispatch_precinct || "N/A"} / ${call.dispatch_sector || "N/A"} / ${call.dispatch_beat || "N/A"}
+                        `;
+                        marker.bindPopup(popupContent);
+                        callClusters.addLayer(marker);
+                        callLayer.addLayer(marker);
+                    } else {
+                        console.log(`Invalid coordinates for call ${index}:`, { lat, lng });
+                    }
+                });
+
+                // Process crimes data
+                let validCrimesCount = 0;
+                crimes.forEach((crime, index) => {
+                    const lat = parseFloat(crime.latitude);
+                    const lng = parseFloat(crime.longitude);
+                    
+                    if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0 
+                        && lat >= 47.4 && lat <= 47.8  // Seattle latitude bounds
+                        && lng >= -122.5 && lng <= -122.2) { // Seattle longitude bounds
+                        validCrimesCount++;
+                        const marker = L.circleMarker([lat, lng], {
+                            radius: 6,
+                            fillColor: "red",
+                            color: "#000",
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        });
+
+                        marker.crimeData = crime;
+                        const popupContent = `
+                            <b>🚔 Crime Report</b><br><hr>
+                            <b>Report Number:</b> ${crime.report_number || "N/A"}<br>
+                            <b>Offense:</b> ${crime.offense_sub_category || "Unknown Crime"}<br>
+                            <b>Category:</b> ${crime.offense_category || "N/A"} (${crime.nibrs_crime_against_category || "N/A"})<br>
+                            <b>NIBRS Group:</b> ${crime.nibrs_group_a_b || "N/A"}<br>
+                            <b>Occurred:</b> ${formatDate(crime.offense_date) || "N/A"}<br>
+                            <b>Reported:</b> ${formatDate(crime.report_date_time) || "N/A"}<br>
+                            <b>Location:</b> ${crime.block_address || "N/A"}<br>
+                            <b>Precinct/Sector/Beat:</b> ${crime.precinct || "N/A"} / ${crime.sector || "N/A"} / ${crime.beat || "N/A"}
+                        `;
+                        marker.bindPopup(popupContent);
+                        crimeClusters.addLayer(marker);
+                        crimeLayer.addLayer(marker);
+                    }
+                });
+
+                // Update heatmaps
+                updateHeatmaps();
+                
+                // Clear loading message and update markers list
+                resultsDiv.innerHTML = '';
+                listMarkers();
+
+                // Fit map to show all data
+                fitDataToView();
+
+                // Show data counts
+                const sidebarCounts = document.getElementById('sidebarCounts');
+                if (sidebarCounts) {
+                    sidebarCounts.innerHTML = `
+                        <span style="color: #007bff;">Calls: ${validCallsCount}</span> |
+                        <span style="color: #dc3545;">Crimes: ${validCrimesCount}</span>
+                    `;
+                }
+
+                // Update category filters
+                updateCategoryFilters([...calls, ...crimes]);
+
+            } catch (error) {
+                console.error("Error processing cached data:", error);
+                resultsDiv.innerHTML = `<div class="error">Error processing cached data: ${error.message}</div>`;
+            }
+        }
 
     </script>
 </body>

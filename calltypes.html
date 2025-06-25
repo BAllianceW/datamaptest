@@ -144,10 +144,23 @@
         }
 
         window.onload = function() {
-            const callData = JSON.parse(localStorage.getItem('latestCallData') || '[]');
+            let callData = [];
+            // Only use sessionStorage (current session query)
+            const mapData = sessionStorage.getItem('mapData');
+            if (mapData) {
+                try {
+                    const parsed = JSON.parse(mapData);
+                    if (parsed.calls && Array.isArray(parsed.calls) && parsed.calls.length > 0) {
+                        callData = parsed.calls;
+                    }
+                } catch (e) {
+                    console.error('Error parsing mapData from sessionStorage:', e);
+                }
+            }
+
             if (!callData.length) {
                 document.getElementById('accordion').innerHTML = 
-                    '<p style="color: red;">No call data found. Please run a query first.</p>';
+                    '<p style="color: red;">No call data found for this session. Please run a query first.</p>';
             } else {
                 buildAccordion(callData);
             }
